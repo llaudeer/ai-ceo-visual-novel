@@ -200,11 +200,35 @@ git commit -m "chore: 3D 개편을 위한 프로젝트 골격과 테스트 러�
 
 **Interfaces:**
 - Consumes: `이미지 정보 폴더/KakaoTalk_Photo_2026-08-10-14-16-18 00{1..5}.jpeg`
-- Produces: 알파 채널이 있는 PNG 5장. Task 12의 `billboard.js`가 `assets/chars/<id>.png` 경로로 읽는다.
+- Produces: 알파 채널이 있는 PNG 5장. Task 13의 `billboard.js`가 `assets/chars/<id>.png` 경로로 읽는다.
 
-포트레이트 5장은 배경이 균일한 하늘색이다. 픽셀별로 배경색과의 유클리드 거리를 재서
-가까우면 투명, 멀면 불투명, 중간이면 부분 투명으로 만든다. 경계에 남는 파란 테두리는
-알파가 낮은 픽셀의 채도를 낮춰 제거한다.
+### 왜 단순 크로마키로는 안 되는가
+
+이 알고리즘은 실제 픽셀을 측정해서 설계했다. 순진한 접근이 실패하는 이유를 알아야
+파라미터를 잘못 건드리지 않는다.
+
+**배경이 균일하지 않다.** 하늘색 단색처럼 보이지만 실제로는 비네팅 그라데이션이다.
+같은 이미지 안에서 모서리가 `rgb(118,147,169)`, 중앙 부근이 `rgb(172,202,219)`로
+차이가 크다. 단일 키 색과의 유클리드 거리로 재면 어두운 모서리는 거리 100이 나와
+배경인데도 거의 불투명하게 남는다.
+
+**피부톤이 배경과 가깝다.** 목 부위 `rgb(234,204,202)`는 키 색과 거리 67~73에
+불과하다. 거리 기반 임계값으로는 피부가 반투명해진다.
+
+**이미지마다 배경 색이 다르다.** 상단 스트립에서 잰 색도(chromaticity)가
+doyun은 `cr=0.2607`, yuna는 `cr=0.2789`다. 전역 상수 하나로는 못 잡는다.
+
+그래서 세 가지를 조합한다.
+
+| 단계 | 무엇을 잡는가 |
+| --- | --- |
+| A. 테두리 flood fill | 그라데이션 배경. 이웃 픽셀과의 국소 차이만 보므로 밝기 변화를 따라간다 |
+| B. 자동보정 색도 테스트 | 팔과 몸통 사이처럼 테두리에서 닿을 수 없는 **갇힌 배경 주머니** |
+| C. 최대 연결 성분 | 위 둘이 놓친 고립된 배경 조각 |
+
+A와 B는 **합집합**이다. A는 어두운 비네팅에 강하고 B는 갇힌 영역에 강하다.
+B 단독은 어두운 모서리에서 실패하지만 그건 A가 처리한다. B는 측정 결과
+어떤 파라미터 조합에서도 피부를 손상시키지 않았다(손상률 0.000%).
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -213,32 +237,149 @@ git commit -m "chore: 3D 개편을 위한 프로젝트 골격과 테스트 러�
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeAlpha, despill } from '../tools/chromakey.mjs';
+import {
+  calibrateBackground, chromaAlpha, floodFillBackground,
+  keepLargestComponent, despill, applyBottomFade
+} from '../tools/chromakey.mjs';
 
-const KEY = { r: 168, g: 207, b: 232 };
+/**
+ * 합성 이미지 헬퍼. width x height RGB 버퍼를 만들고 fn(x,y)이 [r,g,b]를 준다.
+ */
+function makeImage(width, height, fn) {
+  const data = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const [r, g, b] = fn(x, y);
+      const i = (y * width + x) * 3;
+      data[i] = r; data[i + 1] = g; data[i + 2] = b;
+    }
+  }
+  return data;
+}
 
-test('배경색과 정확히 같은 픽셀은 완전 투명', () => {
-  assert.equal(computeAlpha(168, 207, 232, KEY, 40, 110), 0);
+/** 실제 포트레이트에서 측정한 대표 색. */
+const BG_BRIGHT = [168, 207, 232];
+const BG_DARK = [118, 147, 169];   // 비네팅으로 어두워진 같은 배경
+const SKIN = [234, 204, 202];
+const WHITE_JACKET = [223, 212, 215];
+const BLACK_JACKET = [33, 35, 51];
+
+test('calibrateBackground는 상단 스트립에서 배경 색도를 뽑는다', () => {
+  const data = makeImage(20, 100, () => BG_BRIGHT);
+  const cal = calibrateBackground(data, 20, 100);
+  const sum = 168 + 207 + 232;
+  assert.ok(Math.abs(cal.cr - 168 / sum) < 1e-6);
+  assert.ok(Math.abs(cal.cg - 207 / sum) < 1e-6);
 });
 
-test('배경색과 먼 색(검정 재킷)은 완전 불투명', () => {
-  assert.equal(computeAlpha(20, 18, 24, KEY, 40, 110), 255);
+test('calibrateBackground는 어두운 픽셀을 보정에서 제외한다', () => {
+  // 상단 절반은 밝은 배경, 나머지 절반은 새까만 픽셀
+  const data = makeImage(20, 100, (x) => (x < 10 ? BG_BRIGHT : [2, 2, 2]));
+  const cal = calibrateBackground(data, 20, 100);
+  const sum = 168 + 207 + 232;
+  assert.ok(Math.abs(cal.cr - 168 / sum) < 1e-3, '어두운 픽셀이 보정을 오염시켰다');
 });
 
-test('경계 영역은 부분 투명', () => {
-  const a = computeAlpha(140, 180, 205, KEY, 40, 110);
-  assert.ok(a > 0 && a < 255, `경계 알파는 0과 255 사이여야 하는데 ${a}`);
+test('chromaAlpha: 배경색은 완전 투명', () => {
+  const cal = { cr: 168 / 607, cg: 207 / 607 };
+  assert.equal(chromaAlpha(...BG_BRIGHT, cal), 0);
 });
 
-test('알파가 낮을수록 파란 끼가 더 많이 빠진다', () => {
+test('chromaAlpha: 비네팅으로 어두워진 같은 배경도 투명', () => {
+  const cal = { cr: 168 / 607, cg: 207 / 607 };
+  assert.equal(chromaAlpha(...BG_DARK, cal), 0,
+    '색도는 밝기에 불변이므로 어두운 배경도 잡혀야 한다');
+});
+
+test('chromaAlpha: 피부는 완전 불투명', () => {
+  const cal = { cr: 168 / 607, cg: 207 / 607 };
+  assert.equal(chromaAlpha(...SKIN, cal), 255);
+});
+
+test('chromaAlpha: 흰 재킷은 완전 불투명', () => {
+  const cal = { cr: 168 / 607, cg: 207 / 607 };
+  assert.equal(chromaAlpha(...WHITE_JACKET, cal), 255,
+    '정유나의 흰 재킷이 배경으로 오인되면 안 된다');
+});
+
+test('chromaAlpha: 어두운 픽셀은 밝기 게이트로 무조건 불투명', () => {
+  const cal = { cr: 168 / 607, cg: 207 / 607 };
+  assert.equal(chromaAlpha(...BLACK_JACKET, cal), 255,
+    '어두운 픽셀은 색도가 불안정하므로 판정하지 않고 보존한다');
+});
+
+test('floodFillBackground는 그라데이션 배경을 끝까지 따라간다', () => {
+  // 좌우로 밝기가 서서히 변하는 배경. 국소 차이는 작지만 양끝 차이는 크다.
+  const W = 60, H = 40;
+  const data = makeImage(W, H, (x) => {
+    const k = 0.6 + 0.4 * (x / W);
+    return [Math.round(168 * k), Math.round(207 * k), Math.round(232 * k)];
+  });
+  const mask = floodFillBackground(data, W, H);
+  const cleared = mask.reduce((n, v) => n + v, 0);
+  assert.equal(cleared, W * H, `${W * H}px 중 ${cleared}px만 지워졌다 — 그라데이션을 못 따라갔다`);
+});
+
+test('floodFillBackground는 피사체를 뚫고 들어가지 않는다', () => {
+  // 가운데 피부색 사각형
+  const W = 60, H = 40;
+  const inSubject = (x, y) => x >= 20 && x < 40 && y >= 10 && y < 30;
+  const data = makeImage(W, H, (x, y) => (inSubject(x, y) ? SKIN : BG_BRIGHT));
+  const mask = floodFillBackground(data, W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (inSubject(x, y)) assert.equal(mask[y * W + x], 0, `피사체 (${x},${y})가 지워졌다`);
+    }
+  }
+});
+
+test('floodFillBackground는 갇힌 배경에 닿지 못한다 — 색도 테스트가 필요한 이유', () => {
+  // 피부색 고리 안에 갇힌 배경
+  const W = 40, H = 40;
+  const ring = (x, y) => x >= 10 && x < 30 && y >= 10 && y < 30;
+  const hole = (x, y) => x >= 15 && x < 25 && y >= 15 && y < 25;
+  const data = makeImage(W, H, (x, y) => {
+    if (hole(x, y)) return BG_BRIGHT;
+    if (ring(x, y)) return SKIN;
+    return BG_BRIGHT;
+  });
+  const mask = floodFillBackground(data, W, H);
+  assert.equal(mask[20 * W + 20], 0,
+    'flood fill이 갇힌 배경에 닿았다면 이 테스트의 전제가 틀린 것이다');
+});
+
+test('keepLargestComponent는 고립된 조각을 지운다', () => {
+  const W = 20, H = 20;
+  const alpha = new Float32Array(W * H);          // 전부 배경
+  for (let y = 2; y < 12; y++) for (let x = 2; x < 12; x++) alpha[y * W + x] = 255;  // 큰 덩어리
+  for (let y = 15; y < 17; y++) for (let x = 15; x < 17; x++) alpha[y * W + x] = 255; // 작은 섬
+  keepLargestComponent(alpha, W, H);
+  assert.equal(alpha[5 * W + 5], 255, '큰 덩어리는 남아야 한다');
+  assert.equal(alpha[16 * W + 16], 0, '작은 섬은 지워져야 한다');
+});
+
+test('despill: 알파가 낮을수록 파란 끼가 더 많이 빠진다', () => {
   const strong = despill(120, 170, 210, 60);
   const weak = despill(120, 170, 210, 250);
   assert.ok(strong.b < weak.b, '알파가 낮은 픽셀의 파랑이 더 줄어야 한다');
 });
 
-test('불투명 픽셀은 색이 보존된다', () => {
-  const p = despill(120, 170, 210, 255);
-  assert.deepEqual(p, { r: 120, g: 170, b: 210 });
+test('despill: 불투명 픽셀은 색이 보존된다', () => {
+  assert.deepEqual(despill(120, 170, 210, 255), { r: 120, g: 170, b: 210 });
+});
+
+test('despill: 파랑이 이미 낮으면 건드리지 않는다', () => {
+  assert.deepEqual(despill(200, 180, 100, 40), { r: 200, g: 180, b: 100 });
+});
+
+test('applyBottomFade는 아래쪽만 서서히 투명하게 만든다', () => {
+  const W = 4, H = 100;
+  const alpha = new Float32Array(W * H).fill(255);
+  applyBottomFade(alpha, W, H);
+  assert.equal(alpha[50 * W + 0], 255, '중간 높이는 손대지 않는다');
+  assert.equal(alpha[(H - 1) * W + 0], 0, '맨 아래는 완전 투명');
+  const mid = alpha[Math.floor(H * 0.925) * W];
+  assert.ok(mid > 40 && mid < 215, `페이드 중간값이 ${mid} — 선형으로 줄지 않았다`);
 });
 ```
 
@@ -255,25 +396,134 @@ Expected: FAIL — `Cannot find module '../tools/chromakey.mjs'`
 import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 
-/** 포트레이트 5장의 공통 배경색. 샘플링으로 확인된 값. */
-export const KEY_COLOR = { r: 168, g: 207, b: 232 };
+/**
+ * 포트레이트 배경 제거.
+ *
+ * 파라미터는 실제 5장의 픽셀을 측정해 정한 값이다. 근거는 계획서 Task 2의
+ * "왜 단순 크로마키로는 안 되는가" 절에 있다. 함부로 바꾸면 피부가 뚫리거나
+ * 배경이 남는다.
+ */
 
-/** 이 거리 이하는 완전 배경. */
-export const INNER = 40;
-/** 이 거리 이상은 완전 전경. 사이는 선형 보간. */
-export const OUTER = 110;
+/** 이 밝기(r+g+b) 아래로는 색도가 불안정하다. 판정하지 않고 피사체로 보존한다. */
+export const DARK_SUM = 330;
+/** 보정된 배경 색도로부터 이 거리 안이면 완전 배경. */
+export const CHROMA_IN = 0.020;
+/** 이 거리 밖이면 완전 전경. 사이는 선형 보간. */
+export const CHROMA_OUT = 0.048;
+/** flood fill이 이웃으로 번질 때 허용하는 채널당 색 차이. */
+export const FILL_TOL = 14;
+/** flood fill 후보 조건: 파랑이 빨강보다 이만큼 우세해야 배경일 수 있다. */
+export const BLUE_GUARD = 40;
 
-/** 픽셀 하나의 알파(0-255)를 배경색과의 거리로 정한다. */
-export function computeAlpha(r, g, b, key = KEY_COLOR, inner = INNER, outer = OUTER) {
-  const d = Math.hypot(r - key.r, g - key.g, b - key.b);
-  if (d <= inner) return 0;
-  if (d >= outer) return 255;
-  return Math.round(((d - inner) / (outer - inner)) * 255);
+/**
+ * 상단 스트립에서 배경 색도를 잰다.
+ * 5장 모두 상단 5%는 확실히 배경이고, 이미지마다 색이 달라서 매번 새로 잰다.
+ */
+export function calibrateBackground(data, width, height) {
+  let sr = 0, sg = 0, n = 0;
+  const rows = Math.max(1, Math.floor(height * 0.05));
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3;
+      const sum = data[i] + data[i + 1] + data[i + 2];
+      if (sum < DARK_SUM) continue;
+      sr += data[i] / sum;
+      sg += data[i + 1] / sum;
+      n++;
+    }
+  }
+  if (n === 0) throw new Error('상단 스트립에 배경으로 볼 만한 밝은 픽셀이 없다');
+  return { cr: sr / n, cg: sg / n };
+}
+
+/**
+ * 색도 기반 알파. 밝기로 나눠서 비교하므로 비네팅으로 어두워진 배경도 잡는다.
+ * 어두운 픽셀은 색도가 노이즈에 지배되므로 판정하지 않고 불투명으로 둔다.
+ */
+export function chromaAlpha(r, g, b, cal) {
+  const sum = r + g + b;
+  if (sum < DARK_SUM) return 255;
+  const d = Math.hypot(r / sum - cal.cr, g / sum - cal.cg);
+  if (d <= CHROMA_IN) return 0;
+  if (d >= CHROMA_OUT) return 255;
+  return Math.round(((d - CHROMA_IN) / (CHROMA_OUT - CHROMA_IN)) * 255);
+}
+
+/**
+ * 테두리에서 시작하는 flood fill.
+ *
+ * 이웃과의 국소 차이만 보므로 밝기가 서서히 변하는 그라데이션 배경을 끝까지 따라간다.
+ * 피사체 경계에서는 색이 급격히 튀어서 저절로 멈춘다.
+ * 반환값은 1 = 배경인 Uint8Array.
+ */
+export function floodFillBackground(data, width, height) {
+  const n = width * height;
+  const mask = new Uint8Array(n);
+  const stack = [];
+  const candidate = i => data[i * 3 + 2] - data[i * 3] >= BLUE_GUARD;
+  const seed = i => { if (!mask[i] && candidate(i)) { mask[i] = 1; stack.push(i); } };
+
+  for (let x = 0; x < width; x++) { seed(x); seed((height - 1) * width + x); }
+  for (let y = 0; y < height; y++) { seed(y * width); seed(y * width + width - 1); }
+
+  while (stack.length) {
+    const i = stack.pop();
+    const x = i % width;
+    const y = (i - x) / width;
+    const o = i * 3;
+    const r = data[o], g = data[o + 1], b = data[o + 2];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const j = ny * width + nx;
+      if (mask[j] || !candidate(j)) continue;
+      const p = j * 3;
+      if (Math.abs(data[p] - r) <= FILL_TOL &&
+          Math.abs(data[p + 1] - g) <= FILL_TOL &&
+          Math.abs(data[p + 2] - b) <= FILL_TOL) {
+        mask[j] = 1;
+        stack.push(j);
+      }
+    }
+  }
+  return mask;
+}
+
+/** 피사체는 하나의 덩어리다. 가장 큰 연결 성분만 남기고 나머지는 배경으로 지운다. */
+export function keepLargestComponent(alpha, width, height) {
+  const n = width * height;
+  const label = new Int32Array(n).fill(-1);
+  let best = -1, bestSize = 0, next = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 8 || label[i] >= 0) continue;
+    const queue = [i];
+    label[i] = next;
+    let size = 0;
+    while (queue.length) {
+      const c = queue.pop();
+      size++;
+      const x = c % width;
+      const y = (c - x) / width;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const j = ny * width + nx;
+        if (alpha[j] < 8 || label[j] >= 0) continue;
+        label[j] = next;
+        queue.push(j);
+      }
+    }
+    if (size > bestSize) { bestSize = size; best = next; }
+    next++;
+  }
+
+  for (let i = 0; i < n; i++) if (label[i] !== best) alpha[i] = 0;
 }
 
 /**
  * 반투명 경계에 남는 파란 테두리를 제거한다.
- * 알파가 낮을수록 파랑을 초록 쪽으로 끌어내린다.
+ * 알파가 낮을수록 파랑을 빨강/초록 중 큰 쪽으로 끌어내린다.
  */
 export function despill(r, g, b, alpha) {
   if (alpha >= 250) return { r, g, b };
@@ -282,12 +532,21 @@ export function despill(r, g, b, alpha) {
   const nb = b > cap ? Math.round(b - (b - cap) * t) : b;
   return { r, g, b: nb };
 }
+
+/** 아래쪽 15%를 서서히 투명하게 만들어 흉상이 잘린 단면을 감춘다. */
+export function applyBottomFade(alpha, width, height) {
+  const start = Math.floor(height * 0.85);
+  for (let y = start; y < height; y++) {
+    const k = 1 - (y - start) / (height - start);
+    for (let x = 0; x < width; x++) alpha[y * width + x] *= k;
+  }
+}
 ```
 
 - [ ] **Step 4: 테스트 실행해 통과 확인**
 
 Run: `npm test`
-Expected: chromakey 5개 테스트 PASS
+Expected: chromakey 14개 테스트 PASS
 
 - [ ] **Step 5: 배치 처리부 추가**
 
@@ -306,34 +565,41 @@ export const PORTRAITS = [
   ['KakaoTalk_Photo_2026-08-10-14-16-18 005.jpeg', 'doyun']
 ];
 
-/** 빌보드 아래쪽 15%를 서서히 투명하게 만들어 흉상 잘린 면을 감춘다. */
-function applyBottomFade(data, width, height) {
-  const fadeStart = Math.floor(height * 0.85);
-  for (let y = fadeStart; y < height; y++) {
-    const k = 1 - (y - fadeStart) / (height - fadeStart);
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4 + 3;
-      data[i] = Math.round(data[i] * k);
-    }
+export async function buildAlphaMask(srcPath) {
+  const { data, info } = await sharp(srcPath).removeAlpha().raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height } = info;
+  const n = width * height;
+
+  const cal = calibrateBackground(data, width, height);
+  const filled = floodFillBackground(data, width, height);
+
+  // A(테두리 flood fill) ∪ B(색도 테스트)
+  const alpha = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    alpha[i] = filled[i] ? 0 : chromaAlpha(data[i * 3], data[i * 3 + 1], data[i * 3 + 2], cal);
   }
+
+  keepLargestComponent(alpha, width, height);
+  applyBottomFade(alpha, width, height);
+
+  return { data, alpha, width, height, cal };
 }
 
 export async function processPortrait(srcPath, outPath) {
-  const img = sharp(srcPath).ensureAlpha();
-  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+  const { data, alpha, width, height } = await buildAlphaMask(srcPath);
+  const out = Buffer.alloc(width * height * 4);
 
-  for (let i = 0; i < data.length; i += 4) {
-    const a = computeAlpha(data[i], data[i + 1], data[i + 2]);
-    const p = despill(data[i], data[i + 1], data[i + 2], a);
-    data[i] = p.r;
-    data[i + 1] = p.g;
-    data[i + 2] = p.b;
-    data[i + 3] = a;
+  for (let i = 0; i < width * height; i++) {
+    const a = Math.round(alpha[i]);
+    const p = despill(data[i * 3], data[i * 3 + 1], data[i * 3 + 2], a);
+    out[i * 4] = p.r;
+    out[i * 4 + 1] = p.g;
+    out[i * 4 + 2] = p.b;
+    out[i * 4 + 3] = a;
   }
 
-  applyBottomFade(data, info.width, info.height);
-
-  await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+  await sharp(out, { raw: { width, height, channels: 4 } })
     .trim({ threshold: 1 })
     .png({ compressionLevel: 9 })
     .toFile(outPath);
@@ -353,28 +619,75 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 - [ ] **Step 6: 실행해서 PNG 5장 생성**
 
 Run: `node tools/chromakey.mjs`
-Expected: 5줄 출력, `assets/chars/` 에 `seoyeon.png` `yuna.png` `min.png` `jihun.png` `doyun.png` 생성.
-`trim` 때문에 원본보다 크기가 줄어 있어야 한다(배경이 실제로 잘렸다는 증거).
+Expected: 5줄 출력. `trim` 때문에 원본보다 작아야 한다 — 배경이 실제로 잘렸다는 증거다.
+원본 크기는 순서대로 850x1041, 780x1041, 817x1041, 911x1041, 901x1041.
 
-- [ ] **Step 7: 결과 육안 확인**
+- [ ] **Step 7: 마젠타 합성으로 육안 검증**
 
-생성된 PNG를 열어 확인한다:
+투명 PNG를 그냥 보면 배경이 남았는지 알기 어렵다. 강렬한 마젠타 위에 합성하면
+남은 배경과 뚫린 구멍이 한눈에 보인다. 5장을 가로로 이어 붙여 한 장으로 만든다.
 
-```bash
-open assets/chars/seoyeon.png assets/chars/yuna.png assets/chars/min.png assets/chars/jihun.png assets/chars/doyun.png
+`tools/qa-sheet.mjs`:
+
+```js
+import sharp from 'sharp';
+import { PORTRAITS } from './chromakey.mjs';
+
+const tiles = [];
+for (const [, id] of PORTRAITS) {
+  tiles.push(await sharp(`assets/chars/${id}.png`)
+    .flatten({ background: '#FF00FF' })
+    .resize({ height: 520 })
+    .toBuffer());
+}
+const metas = await Promise.all(tiles.map(t => sharp(t).metadata()));
+let left = 0;
+const composite = tiles.map((input, i) => {
+  const spec = { input, left, top: 0 };
+  left += metas[i].width;
+  return spec;
+});
+await sharp({ create: { width: left, height: 520, channels: 3, background: '#000' } })
+  .composite(composite).jpeg({ quality: 82 }).toFile('assets/chars/_qa-sheet.jpg');
+console.log(`QA 시트 생성: assets/chars/_qa-sheet.jpg (${left}x520)`);
 ```
 
-확인 항목:
-- 배경이 투명한가 (체커보드가 보이는가)
-- 머리카락 경계에 파란 테두리가 남았는가
-- 인물 내부가 잘못 뚫렸는가 (특히 정유나의 흰 재킷 — 밝은 색이라 배경으로 오인될 위험)
+Run: `node tools/qa-sheet.mjs`
 
-정유나가 뚫렸으면 `INNER`를 40 → 28로 낮추고 Step 6부터 다시 한다.
+그리고 Read 도구로 `assets/chars/_qa-sheet.jpg`를 **실제로 열어서 본다.**
+확인 항목 — 다섯 명 각각에 대해:
 
-- [ ] **Step 8: 커밋**
+- 배경이 전부 마젠타인가. 하늘색이나 회청색 얼룩이 남아 있지 않은가
+- 얼굴·목·손에 마젠타가 비쳐 보이지 않는가 (피부가 뚫린 것)
+- 정유나(2번)의 **흰 재킷**이 온전한가 — 흰색이라 배경으로 오인될 위험이 가장 크다
+- 박지훈(4번)의 **손과 가슴 사이 틈**에 하늘색이 남아 있지 않은가 — 테두리에서
+  닿을 수 없는 갇힌 영역이라 색도 테스트가 잡아야 하는 자리다
+- 머리카락 경계에 초록/파랑 테두리가 없는가
+
+문제가 있으면 아래 순서로 조정한다. 한 번에 하나씩만 바꾸고 매번 Step 6~7을 다시 한다.
+
+| 증상 | 조정 |
+| --- | --- |
+| 배경 얼룩이 남음 | `CHROMA_IN` 0.020 → 0.026 |
+| 갇힌 영역이 안 지워짐 | `CHROMA_IN` 0.020 → 0.026 |
+| 피부/흰옷이 뚫림 | `CHROMA_IN` 0.020 → 0.016, 또는 `DARK_SUM` 330 → 380 |
+| 머리 경계에 색 테두리 | `CHROMA_OUT` 0.048 → 0.056 |
+| 그라데이션 배경이 중간에 끊김 | `FILL_TOL` 14 → 20 |
+
+`BLUE_GUARD`는 40보다 낮추지 않는다. 측정 결과 28 이하에서 검은 재킷이 뚫리기 시작한다.
+
+- [ ] **Step 8: QA 시트를 산출물에서 제외**
+
+`_qa-sheet.jpg`는 검증용이지 게임 에셋이 아니다. `.gitignore`에 추가한다:
+
+```gitignore
+assets/chars/_qa-sheet.jpg
+```
+
+- [ ] **Step 9: 커밋**
 
 ```bash
-git add tools/chromakey.mjs test/chromakey.test.js assets/chars
+git add tools/chromakey.mjs tools/qa-sheet.mjs test/chromakey.test.js assets/chars .gitignore
 git commit -m "feat: 포트레이트 크로마키 파이프라인과 알파 PNG 5장"
 ```
 
