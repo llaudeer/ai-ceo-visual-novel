@@ -5,7 +5,7 @@
   "type": "module",
   "description": "AI CEO — 3D office visual novel",
   "scripts": {
-    "test": "node --test 'test/*.test.js'",
+    "test": "node --test",
     "serve": "python3 -m http.server 5173",
     "assets": "node tools/chromakey.mjs && node tools/crop.mjs"
   },
