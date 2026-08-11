@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+# 정적 사이트다. 빌드 도구가 없으므로 저장소를 그대로 올린다.
+# Jekyll을 거치지 않는다 — Jekyll의 기본 exclude에 vendor/ 가 들어 있어
+# three.js가 배포본에서 빠지기 때문이다.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 하나씩. 진행 중인 것을 취소하지 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 테스트
+        run: node --test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: 아티팩트 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - name: 배포
+        id: deployment
+        uses: actions/deploy-pages@v4
