@@ -2145,7 +2145,7 @@ git commit -m "feat: ARIA 4상태 컬러 토큰"
   - `export const DESKS` — `{ x, z, w, d, rot }[]` (rot은 라디안)
   - `export const OBSTACLES` — `{ x, z, w, d }[]` 축정렬 사각형. 벽 4개 + 책상 + 회의테이블
   - `export const SPAWN` — `{ x: 0, z: 5.5, facing: 0 }`
-  - `export const MEETING` — `{ x: 0, z: -1.6, radius: 2.4 }`
+  - `export const MEETING` — `{ x: 0, z: -1.4, radius: 2.4 }` (회의 테이블 좌표와 일치해야 한다)
   - `export const PLAYER_RADIUS` — `0.35`
   - `export function meetingSlots(count)` — 회의 시 NPC가 설 좌표 배열 (2단계에서 사용)
   - `export function resolveCollision(pos, next, obstacles, radius)` — 벽을 미끄러지듯 통과 못 하게 보정한 좌표 `{ x, z }`
