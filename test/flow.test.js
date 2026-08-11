@@ -129,7 +129,7 @@ test('선택 기록이 history에 남는다', () => {
   const f = createFlow(fixture());
   f.advance(); f.advance();
   f.choose(1);
-  assert.deepEqual(f.state.history, [{ sceneId: 'one', choice: 1, label: 'B' }]);
+  assert.deepEqual(f.state.history, [{ sceneId: 'one', choice: 1, label: 'B', passed: true }]);
 });
 
 test('beat 이벤트가 발행된다', () => {
@@ -189,7 +189,24 @@ test('실제 스토리를 항상 첫 선택지로 완주하면 엔딩에 도달�
     else f.advance();
   }
   assert.ok(f.ending.id, '엔딩 id가 있어야 한다');
-  assert.equal(f.state.history.length, ORDER.length, '씬마다 한 번씩 선택했어야 한다');
+  const choiceScenes = ORDER.filter(id => (SCENES[id].choices ?? []).length > 0).length;
+  assert.equal(f.state.history.length, choiceScenes, '선택지가 있는 씬마다 한 번씩 선택했어야 한다');
+});
+
+test('선택지가 없는 씬(프롤로그·출시)에서 진행이 막히지 않는다', () => {
+  const noChoice = ORDER.filter(id => (SCENES[id].choices ?? []).length === 0);
+  assert.ok(noChoice.length > 0, '선택지 없는 씬이 실제로 존재해야 이 테스트가 의미를 갖는다');
+
+  const f = createFlow({ scenes: SCENES, order: ORDER, endings: ENDINGS, state: initialState() });
+  const visited = new Set();
+  let guard = 0;
+  while (f.mode !== 'ending') {
+    if (guard++ > 5000) assert.fail('진행이 막혔다 — 무한 루프');
+    visited.add(f.state.sceneId);
+    if (f.mode === 'choice') f.choose(0);
+    else f.advance();
+  }
+  for (const id of noChoice) assert.ok(visited.has(id), `${id} 씬을 지나갔어야 한다`);
 });
 
 test('모든 선택지 조합의 첫 수준을 훑어도 막히지 않는다', () => {

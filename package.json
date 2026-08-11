@@ -1,9 +1,9 @@
 {
-  "name": "ai-ceo-3d-office",
-  "version": "0.1.0",
+  "name": "aria-7-weeks",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "AI CEO — 3D office visual novel",
+  "description": "ARIA : 7 WEEKS — 3078년, 7주 안에 게임 하나를 출시해야 하는 3D 경영 시뮬레이션",
   "scripts": {
     "test": "node --test",
     "serve": "python3 -m http.server 5173",

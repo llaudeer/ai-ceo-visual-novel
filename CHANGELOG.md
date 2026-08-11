@@ -2,6 +2,39 @@
 
 프로젝트의 중요한 기획, 구현, 밸런스, 배포 변경을 기록합니다. 단순한 오탈자 수정은 생략할 수 있지만, 게임 규칙이나 플레이 경험이 바뀌면 반드시 기록합니다.
 
+## 2026-08-12 (스토리 전면 교체 + 배포 복구)
+
+### Added
+
+- 새 스토리 《ARIA : 7 WEEKS》로 전면 교체. 3078년 / TRIPLEDOT STUDIO / 7주 안에 `NEON MEMORY` 출시. 프롤로그 + WEEK 1~7 + 출시, 결정 9개, 엔딩 5종
+- `src/ui/hud.js` 신규 — 대사창, 타이핑, 선택지, 스탯 표시, 중앙 배너, 엔딩 화면. **3D 개편 이후 지금까지 대사 UI가 아예 없었다**
+- `index.html`에 타이틀 화면 추가 (조작법 안내 포함). PROJECT_BIBLE 10절의 "첫 화면에서 조작법을 이해할 수 있다"를 충족
+- `vendor/three.module.js` — three.js r169을 저장소에 포함
+- `docs/GAMEPLAY.md` — 운영비, 자금 분기, 협상 게이트, 엔딩 판정의 근거
+- `state.js`에 `resolveBranch` — 조건부 선택지(WEEK 3 협상)의 성공/실패 분기
+- `story.test.js`에 도달 가능성 테스트 — 13,122가지 선택 조합을 전부 완주시켜 다섯 엔딩이 모두 나오고 막히는 경로가 없음을 검증
+
+### Fixed
+
+- **저장소에 git remote가 하나도 없었다.** 3D 개편 커밋 9개가 전부 로컬에만 있었고 배포 링크는 계속 이전 2D 버전을 서빙하고 있었다. `origin`을 연결해 복구
+- **3D 월드와 스토리 엔진이 연결되어 있지 않았다.** `main.js`가 `flow.js`/`state.js`/`story.data.js`를 전혀 import 하지 않아, 실행하면 걸어다니기만 되는 빈 사무실이었다
+- `flow.js`가 선택지 없는 씬에서 영구히 `choice` 모드에 갇히던 문제. 프롤로그와 출시 씬처럼 나레이션만 있는 씬을 지원하도록 수정
+- three.js를 unpkg CDN에서 받고 있어 네트워크가 끊기면 게임이 뜨지 않던 문제. 저장소 포함으로 전환
+- `applyEffects`가 상태에 없는 키를 clamp하며 `NaN`을 만들던 문제
+- README가 "`index.html` 단일 파일, 빌드·네트워크 불필요"라고 설명했으나 실제로는 ES module + importmap이라 `file://`에서 실행 불가였다. 정적 서버가 필요하다고 정정
+- README와 PROJECT_BIBLE 12절이 존재하지 않는 7개 문서(`docs/STORY.md`, `docs/AI_SYSTEM.md` 등)를 참조하고 있었다. 실재하는 문서만 가리키도록 수정
+
+### Changed
+
+- 상태값을 7개(원화 `cash`, `revenue`, `morale`, `reputation`, `productQuality` 포함)에서 4개(`funds`/`trust`/`quality`/`aiDependence`)로 축소. 통화도 원화 200만 원에서 100,000 CR로 변경. PROJECT_BIBLE 5·7절을 함께 개정
+- 엔딩 6종에서 5종으로 교체. 판정 순서가 곧 우선순위이며 마지막이 폴백
+
+### Notes
+
+- WEEK 3의 협상 조건은 대본상 `도윤 신뢰 ≥ 10`이었으나, 그 시점까지 도윤 신뢰를 올릴 수단이 하나도 없어 영원히 실패하는 선택지였다. 팀 신뢰 `trust >= 55`로 대체했다 — 사람을 택해 온 플레이어만 협상할 수 있다는 의도는 유지된다
+- WEEK 3만 운영비가 13,000 CR인 이유는 대본에 `OPERATING FUNDS: 63,000 CR`이 화면 문구로 박혀 있기 때문이다. 12,000으로 맞추면 표시와 실제 잔액이 1,000 CR 어긋난다. 테스트가 이 일치를 검증한다
+- `assets/chars/ceo_back.png`는 존재하지 않아 콘솔에 404가 남는다. 이는 의도된 선택적 애셋 탐지이며, 없으면 3D 피규어로 대체된다 (`player-figure.js`)
+
 ## 2026-08-08 (배포)
 
 ### Added

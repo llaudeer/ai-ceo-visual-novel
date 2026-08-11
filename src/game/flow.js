@@ -1,4 +1,4 @@
-import { applyEffects, resolveEffects, pickEnding } from './state.js';
+import { applyEffects, resolveBranch, pickEnding } from './state.js';
 
 /**
  * 스토리 진행 상태 기계.
@@ -8,6 +8,9 @@ import { applyEffects, resolveEffects, pickEnding } from './state.js';
  *   beat   — 대사/나레이션 재생 중. 클릭으로 진행.
  *   choice — 선택지 대기. 클릭 진행이 잠긴다.
  *   ending — 종료.
+ *
+ * 씬에 choices가 없으면(프롤로그 나레이션, 출시 씬) 선택 단계를 건너뛰고
+ * 곧바로 다음 씬으로 넘어간다. 이게 없으면 선택지 없는 씬에서 진행이 막힌다.
  */
 export function createFlow({ scenes, order, endings, state }) {
   const listeners = new Map();
@@ -53,17 +56,17 @@ export function createFlow({ scenes, order, endings, state }) {
       const choice = sc.choices[i];
       if (!choice) throw new Error(`선택지 인덱스 범위를 벗어남: ${i}`);
 
-      const fx = resolveEffects(flow.state, choice);
-      flow.state = applyEffects(flow.state, fx);
+      const { effects, after, passed } = resolveBranch(flow.state, choice);
+      flow.state = applyEffects(flow.state, effects);
       flow.state.history = [
         ...flow.state.history,
-        { sceneId: flow.state.sceneId, choice: i, label: choice.label }
+        { sceneId: flow.state.sceneId, choice: i, label: choice.label, passed }
       ];
 
-      queue = choice.after ?? [];
+      queue = after;
       index = -1;
       flow.mode = 'beat';
-      emit('choose', choice, i);
+      emit('choose', choice, i, passed);
       flow.advance();
     }
   };
@@ -72,12 +75,33 @@ export function createFlow({ scenes, order, endings, state }) {
     for (const fn of listeners.get(event) ?? []) fn(...args);
   }
 
+  function hasChoices(sc) {
+    return Array.isArray(sc.choices) && sc.choices.length > 0;
+  }
+
+  /** 씬에 들어갈 때의 고정 비용과 주차를 반영한다. */
+  function enterScene(id) {
+    const sc = scenes[id];
+    flow.state = { ...flow.state, sceneId: id, week: sc.week ?? flow.state.week };
+    if (sc.burn) flow.state = applyEffects(flow.state, { funds: sc.burn });
+    queue = sc.beats;
+    index = -1;
+    emit('scene', sc, id);
+  }
+
+  function toEnding() {
+    flow.mode = 'ending';
+    index = -1;
+    flow.ending = pickEnding(flow.state, endings);
+    emit('ending', flow.ending);
+  }
+
   /** 현재 큐를 다 소진했을 때: 선택지를 띄우거나, 다음 씬으로 가거나, 엔딩을 낸다. */
   function afterQueueDrained() {
     const sc = flow.scene();
     const alreadyChose = flow.state.history.some(h => h.sceneId === flow.state.sceneId);
 
-    if (!alreadyChose) {
+    if (hasChoices(sc) && !alreadyChose) {
       flow.mode = 'choice';
       index = -1;
       emit('choices', sc.choices, sc.q);
@@ -85,23 +109,17 @@ export function createFlow({ scenes, order, endings, state }) {
     }
 
     const next = order[order.indexOf(flow.state.sceneId) + 1];
-    if (!next) {
-      flow.mode = 'ending';
-      index = -1;
-      flow.ending = pickEnding(flow.state, endings);
-      emit('ending', flow.ending);
-      return;
-    }
+    if (!next) { toEnding(); return; }
 
-    flow.state = { ...flow.state, sceneId: next };
-    queue = scenes[next].beats;
-    index = -1;
-    emit('scene', scenes[next], next);
+    enterScene(next);
     flow.advance();
   }
 
-  // 첫 씬의 첫 beat을 즉시 세팅한다. 이벤트는 아직 구독자가 없으므로 발행하지 않는다.
-  queue = scenes[state.sceneId].beats;
+  // 첫 씬을 세팅한다. 이벤트는 아직 구독자가 없으므로 발행하지 않는다.
+  const first = scenes[state.sceneId];
+  if (first.burn) flow.state = applyEffects(flow.state, { funds: first.burn });
+  flow.state = { ...flow.state, week: first.week ?? 0 };
+  queue = first.beats;
   index = 0;
 
   return flow;
