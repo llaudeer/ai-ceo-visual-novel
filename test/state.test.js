@@ -94,3 +94,18 @@ test('HUD_STATS의 모든 키가 STATS에 존재한다', () => {
   const keys = new Set(STATS.map(s => s.key));
   for (const k of HUD_STATS) assert.ok(keys.has(k), `${k} 가 STATS에 없다`);
 });
+
+test('history는 얕은 복사되어 원본과 분리된다', () => {
+  const a = initialState();
+  const b = applyEffects(a, { cash: -100000 });
+  a.history.push('fake event');
+  assert.equal(a.history.length, 1);
+  assert.equal(b.history.length, 0, 'history 배열이 분리되지 않았다');
+});
+
+test('숫자가 아닌 효과값은 무시된다', () => {
+  const s = applyEffects(initialState(), { trust: 'string', cash: null, revenue: undefined });
+  assert.equal(s.trust, 50, '문자열 값이 적용되었다');
+  assert.equal(s.cash, 2000000, 'null 값이 적용되었다');
+  assert.equal(s.revenue, 0, 'undefined 값이 적용되었다');
+});
