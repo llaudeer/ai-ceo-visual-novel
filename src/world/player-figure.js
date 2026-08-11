@@ -57,11 +57,17 @@ function buildBillboard(group, tex) {
 }
 
 function buildFigure(group) {
-  const jacket = new THREE.MeshStandardMaterial({ color: '#0D0D12', roughness: 0.62, metalness: 0.18 });
-  const pants = new THREE.MeshStandardMaterial({ color: '#0A0A0E', roughness: 0.85 });
-  const hair = new THREE.MeshStandardMaterial({ color: '#0B0A0C', roughness: 0.55 });
+  // 재킷은 완전한 검정이 아니라 살짝 밝히고 광택을 준다 — 실루엣이 배경과 뭉개지지
+  // 않고 윤곽에 하이라이트가 걸리게 하기 위해서다.
+  const jacket = new THREE.MeshStandardMaterial({ color: '#1C1C26', roughness: 0.42, metalness: 0.32 });
+  const pants = new THREE.MeshStandardMaterial({ color: '#121218', roughness: 0.75, metalness: 0.15 });
+  const hair = new THREE.MeshStandardMaterial({ color: '#16141A', roughness: 0.4, metalness: 0.2 });
   const skin = new THREE.MeshStandardMaterial({ color: '#D9B394', roughness: 0.8 });
-  const led = new THREE.MeshBasicMaterial({ color: '#A855F7', toneMapped: false });
+  const led = new THREE.MeshBasicMaterial({ color: '#C084FC', toneMapped: false });
+  const ledGlow = new THREE.MeshBasicMaterial({
+    color: '#A855F7', transparent: true, opacity: 0.45,
+    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+  });
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.46, 6, 14), jacket);
   torso.position.y = 1.16;
@@ -100,19 +106,39 @@ function buildFigure(group) {
     arm.position.set(s * 0.28, 1.13, 0);
     group.add(arm);
 
-    // 어깨 솔기를 따라 흐르는 보라 LED
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.34, 0.014), led);
-    strip.position.set(s * 0.235, 1.24, -0.11);
+    // 어깨 솔기를 따라 흐르는 보라 LED. 실제 발광면(led)에 더 넓은 반투명 겹
+    // (ledGlow)을 겹쳐 후처리 블룸 없이도 번져 보이게 한다.
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.36, 0.028), led);
+    strip.position.set(s * 0.235, 1.24, -0.115);
     group.add(strip);
+
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.4, 0.07), ledGlow);
+    glow.position.copy(strip.position);
+    group.add(glow);
+
+    // 어깨 뒤쪽 가장자리를 밝히는 보라 림 라이트 — LED 위치와 짝을 맞춘다
+    const shoulderRim = new THREE.PointLight('#B266FF', 3.2, 2.4, 1.5);
+    shoulderRim.position.set(s * 0.3, 1.28, -0.28);
+    group.add(shoulderRim);
   }
 
   // 등판 CEO 패치 자리를 암시하는 가로 라인
-  const backLine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.014, 0.014), led);
+  const backLine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.018), led);
   backLine.position.set(0, 1.3, -0.155);
   group.add(backLine);
 
+  const backGlow = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.05), ledGlow);
+  backGlow.position.copy(backLine.position);
+  group.add(backGlow);
+
+  // 정수리 위쪽에서 은은하게 내려오는 냉색 에지 라이트 — 사무실 펜던트 조명이
+  // 어깨선을 스치는 것처럼 실루엣의 위쪽 윤곽을 살려 형태가 읽히게 한다.
+  const edge = new THREE.PointLight('#C7D8FF', 1.4, 2.6, 1.7);
+  edge.position.set(0, 1.9, -0.25);
+  group.add(edge);
+
   // 플레이어 주변을 아주 약하게 밝혀 실루엣이 배경에 묻히지 않게 한다
-  const rim = new THREE.PointLight('#A855F7', 0.5, 1.6, 2);
-  rim.position.set(0, 1.2, -0.3);
+  const rim = new THREE.PointLight('#A855F7', 1.8, 2.2, 1.6);
+  rim.position.set(0, 1.2, -0.35);
   group.add(rim);
 }
