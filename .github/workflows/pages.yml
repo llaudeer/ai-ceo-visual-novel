@@ -27,6 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+      # sharp는 애셋 가공 도구(tools/)의 의존성이다.
+      # 설치하지 않으면 chromakey.test.js가 모듈을 못 찾아 실패한다.
+      - name: 의존성 설치
+        run: npm ci
       - name: 테스트
         run: node --test
 
