@@ -700,14 +700,47 @@ git commit -m "feat: 포트레이트 크로마키 파이프라인과 알파 PNG 
 - Output: `assets/chars/ceo_bust.png`, `assets/bg/window_night.jpg`, `assets/bg/wall_shelf.jpg`
 
 **Interfaces:**
-- Consumes: `이미지 정보 폴더/사장 이미지파일.png` (1086×1448), `KakaoTalk_Photo_2026-08-10-14-15-42 001.png` (1402×1122), `002.png` (1448×1086)
-- Produces: Task 9의 `backdrop.js`가 `assets/bg/*.jpg`를 읽는다. `ceo_bust.png`는 2단계 UI에서 쓴다.
+- Consumes: `이미지 정보 폴더/사장 이미지파일.png` (1086×1448), `이미지 정보 폴더/KakaoTalk_Photo_2026-08-10-14-15-42 001.png` (1402×1122)
+- Produces: Task 10의 `backdrop.js`가 `assets/bg/*.jpg`를 읽는다. `ceo_bust.png`는 2단계 UI에서 쓴다.
 
-사장 이미지는 앱 UI가 잘못 얹혀 나온 것이다. 좌측 동작/분위기/복장 버튼(x < 130),
-상단 치장 바(y < 80), 우하단 다음 버튼(y > 1330)을 잘라낸다.
+### 좌표는 이미 검증되었다
 
-백드롭은 원본 사진에 찍힌 사람이 없는 영역만 고른다. 사람이 들어가면 3D 빌보드
-캐릭터와 이중으로 보인다.
+아래 세 좌표는 원본에 좌표 그리드를 얹어 눈으로 확인하고, 잘라서 결과물까지 육안 검증한
+값이다. **추측이 아니므로 바꾸지 않는다.** 바꾸면 사람이나 목업 UI가 딸려 들어온다.
+
+| 산출물 | 원본 | extract |
+| --- | --- | --- |
+| `ceo_bust.png` | `사장 이미지파일.png` | `left:150, top:90, width:880, height:1200` |
+| `window_night.jpg` | 분위기 A | `left:1110, top:125, width:290, height:200` |
+| `wall_shelf.jpg` | 분위기 A | `left:30, top:152, width:400, height:78` |
+
+**왜 이 좌표인가.**
+
+`사장 이미지파일.png`는 앱 UI가 얹힌 채 잘못 내보낸 스크린샷이다. 좌측 아이콘 열(x<110),
+상단 "치장" 바(y<60), 우하단 "다음" 버튼(x>780, y>1330)을 전부 잘라내야 한다.
+검증한 크롭은 이 셋을 모두 제거하면서 얼굴, `CEO` 패치, TRIPLEDOT 패치, AR 글래스를
+온전히 남긴다. 배경의 어두운 사무실은 그대로 둔다 — UI 포트레이트 카드로 쓸 것이라
+어두운 배경이 오히려 어울린다. 알파 분리는 하지 않는다.
+
+분위기 A는 목업 UI와 네임태그가 화면 곳곳을 덮고 있어 깨끗한 영역이 잘게 쪼개져 있다.
+사람이 없고 UI도 없는 구역은 실제로 두 곳뿐이었다:
+
+- **우측 상단 창** `x∈[1110,1400], y∈[125,325]` — 한도윤의 네임태그는 x≤1105에서 끝나고
+  그의 머리는 y≥330부터다. 그 사이가 순수한 야경이다.
+- **좌측 벽 띠** `x∈[30,430], y∈[152,230]` — 위로는 박지훈 네임태그(y≤150),
+  아래로는 정유나 네임태그(y≥233), 오른쪽으로는 박지훈 본인(x≥440)이 경계를 만든다.
+  TRIPLEDOT 로고와 책장, 화분이 들어와서 벽 텍스처로 쓰기 좋다.
+
+분위기 B도 검토했지만 네임태그가 화면 전폭에 걸쳐 한 줄로 늘어서 있어 A보다 나쁘다.
+
+### 작은 크롭을 큰 벽에 붙이는 법
+
+두 백드롭은 각각 290×200, 400×78로 작다. 벽 평면은 24m×5.6m라 그대로 늘이면
+가로로 3배 뭉개진다. 그래서 **텍스처를 크게 굽지 않고 타일링에 맡긴다.**
+
+Task 10의 `backdrop.js`가 `THREE.MirroredRepeatWrapping`으로 반복시킬 것이므로,
+이 태스크는 원본 비율을 지킨 채 2배 정도만 업스케일하고 약한 블러만 넣는다.
+블러는 손실이 아니라 의도다 — 원경임을 알리는 장치다.
 
 - [ ] **Step 1: 크롭 스크립트 작성**
 
@@ -717,11 +750,20 @@ git commit -m "feat: 포트레이트 크로마키 파이프라인과 알파 PNG 
 import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 
+/**
+ * 원본 사진에서 게임 에셋을 잘라낸다.
+ *
+ * 좌표는 원본에 좌표 그리드를 얹어 확인하고 결과물까지 육안 검증한 값이다.
+ * 바꾸면 사람이나 목업 UI가 딸려 들어온다. 근거는 계획서 Task 3에 있다.
+ */
+
 const SRC = '이미지 정보 폴더';
+const MOOD_A = `${SRC}/KakaoTalk_Photo_2026-08-10-14-15-42 001.png`;
 
 /**
- * 사장 이미지에서 인물 흉상만 남긴다.
- * 원본 1086x1448. 좌측 아이콘 열과 상단 바, 하단 버튼을 제외한 영역.
+ * 대표(플레이어) 흉상.
+ * 좌측 아이콘 열, 상단 치장 바, 우하단 다음 버튼을 잘라내고 인물만 남긴다.
+ * 어두운 사무실 배경은 유지한다 — UI 포트레이트 카드용이라 그편이 어울린다.
  */
 async function ceoBust() {
   await sharp(`${SRC}/사장 이미지파일.png`)
@@ -731,57 +773,77 @@ async function ceoBust() {
 }
 
 /**
- * 분위기 A(1402x1122)의 우측 상단 — 통유리 야경.
- * 인물은 화면 하단과 좌측에 몰려 있으므로 상단 띠만 쓴다.
+ * 통유리 야경. 한도윤의 네임태그(x≤1105)와 그의 머리(y≥330) 사이의 빈 구간.
+ * 사람 없음.
  */
 async function windowNight() {
-  await sharp(`${SRC}/KakaoTalk_Photo_2026-08-10-14-15-42 001.png`)
-    .extract({ left: 900, top: 60, width: 500, height: 560 })
-    .resize({ width: 1024 })
-    .modulate({ brightness: 0.9 })
-    .jpeg({ quality: 88 })
+  await sharp(MOOD_A)
+    .extract({ left: 1110, top: 125, width: 290, height: 200 })
+    .resize({ width: 580, kernel: 'lanczos3' })
+    .blur(0.8)
+    .modulate({ brightness: 0.92 })
+    .jpeg({ quality: 90 })
     .toFile('assets/bg/window_night.jpg');
 }
 
 /**
- * 분위기 A의 좌측 상단 — 서가와 벽, 천장 조명.
- * 인물 머리 위 영역이라 사람이 들어가지 않는다.
+ * 좌측 벽 띠. TRIPLEDOT 로고, 책장, 화분.
+ * 위아래를 네임태그가, 오른쪽을 박지훈이 막고 있는 좁은 구간. 사람 없음.
  */
 async function wallShelf() {
-  await sharp(`${SRC}/KakaoTalk_Photo_2026-08-10-14-15-42 001.png`)
-    .extract({ left: 20, top: 60, width: 560, height: 480 })
-    .resize({ width: 1024 })
-    .modulate({ brightness: 0.85 })
-    .jpeg({ quality: 88 })
+  await sharp(MOOD_A)
+    .extract({ left: 30, top: 152, width: 400, height: 78 })
+    .resize({ width: 800, kernel: 'lanczos3' })
+    .blur(0.8)
+    .modulate({ brightness: 0.88 })
+    .jpeg({ quality: 90 })
     .toFile('assets/bg/wall_shelf.jpg');
 }
 
 await mkdir('assets/bg', { recursive: true });
+await mkdir('assets/chars', { recursive: true });
 await ceoBust();
 await windowNight();
 await wallShelf();
-console.log('crop 완료');
+
+for (const p of ['assets/chars/ceo_bust.png', 'assets/bg/window_night.jpg', 'assets/bg/wall_shelf.jpg']) {
+  const m = await sharp(p).metadata();
+  console.log(`${p.padEnd(30)} ${m.width}x${m.height}`);
+}
 ```
 
 - [ ] **Step 2: 실행**
 
 Run: `node tools/crop.mjs`
-Expected: `crop 완료` 출력, 파일 3개 생성.
 
-- [ ] **Step 3: 결과 육안 확인 — 사람이 남아 있는지가 핵심**
-
-```bash
-open assets/chars/ceo_bust.png assets/bg/window_night.jpg assets/bg/wall_shelf.jpg
+Expected:
+```
+assets/chars/ceo_bust.png      880x1200
+assets/bg/window_night.jpg     580x400
+assets/bg/wall_shelf.jpg       800x156
 ```
 
-확인 항목:
-- `ceo_bust.png`: UI 버튼·텍스트가 하나도 안 남았는가, 인물 얼굴이 잘리지 않았는가
-- `window_night.jpg`: **사람이 한 명도 없는가**, 야경 창이 화면을 채우는가
-- `wall_shelf.jpg`: **사람이 한 명도 없는가**, 서가/벽/조명이 보이는가
+- [ ] **Step 3: 육안 검증**
 
-사람이 남아 있으면 `extract` 좌표를 조정해 다시 실행한다. 좌표를 찾을 때는
-원본을 열어 픽셀 위치를 직접 확인한다. 원본 사진을 훼손해도 무방하다는 승인을 받았으므로
-크롭 결과가 원본과 달라지는 것은 문제가 아니다.
+Read 도구로 세 파일을 **실제로 열어서 본다.** Read는 이미지를 렌더한다.
+
+`assets/chars/ceo_bust.png`
+- 앱 UI가 하나도 안 남았는가 (좌측 아이콘, 상단 바, 우하단 버튼)
+- 얼굴이 잘리지 않았는가
+- `CEO` 패치와 TRIPLEDOT 패치가 보이는가
+
+`assets/bg/window_night.jpg`
+- **사람이 한 명도 없는가** ← 가장 중요
+- 목업 UI 조각이 없는가
+- 야경 마천루와 창틀이 화면을 채우는가
+
+`assets/bg/wall_shelf.jpg`
+- **사람이 한 명도 없는가** ← 가장 중요
+- 목업 UI 조각이나 네임태그 모서리가 없는가
+- TRIPLEDOT 로고와 책장이 보이는가
+
+사람이나 UI가 보이면 좌표가 잘못 적용된 것이다. 검증된 값과 코드를 대조한다.
+좌표를 임의로 바꾸지 말고, 왜 어긋났는지 먼저 확인한다.
 
 - [ ] **Step 4: 커밋**
 
@@ -2660,15 +2722,27 @@ function load(url) {
   return new Promise((resolve, reject) => {
     loader.load(url, tex => {
       tex.colorSpace = THREE.SRGBColorSpace;
+      // 백드롭 크롭은 작다(580x400, 800x156). 큰 벽에 그대로 늘이면 가로로 뭉개지므로
+      // 거울 반복으로 타일링한다. 거울이라 이음매가 생기지 않는다.
+      tex.wrapS = THREE.MirroredRepeatWrapping;
+      tex.wrapT = THREE.MirroredRepeatWrapping;
       resolve(tex);
     }, undefined, () => reject(new Error(`백드롭 로드 실패: ${url}`)));
   });
 }
 
-function panel(tex, w, h) {
+/**
+ * 백드롭 평면 하나.
+ * repeat 은 평면의 가로세로 비율과 텍스처 비율의 차이를 메운다.
+ * 이걸 안 하면 좁은 크롭이 넓은 벽에 가로로 늘어져 뭉개진다.
+ */
+function panel(tex, w, h, repeatX = 1, repeatY = 1) {
+  const map = tex.clone();
+  map.needsUpdate = true;
+  map.repeat.set(repeatX, repeatY);
   return new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
-    new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, fog: false })
+    new THREE.MeshBasicMaterial({ map, toneMapped: false, fog: false })
   );
 }
 
@@ -2686,18 +2760,18 @@ export async function addBackdrop(scene) {
   ]);
 
   // 안쪽 벽 전체를 채우는 야경 (-Z)
-  const back = panel(night, ROOM.width + 6, ROOM.height + 2.4);
+  const back = panel(night, ROOM.width + 6, ROOM.height + 2.4, 3, 1);
   back.position.set(0, ROOM.height / 2, -ROOM.halfD - 0.6);
   scene.add(back);
 
   // 우측 창 (+X). 안쪽을 향해 90도 돌린다.
-  const right = panel(night, ROOM.depth + 4, ROOM.height + 2.4);
+  const right = panel(night, ROOM.depth + 4, ROOM.height + 2.4, 2.5, 1);
   right.rotation.y = -Math.PI / 2;
   right.position.set(ROOM.halfW + 0.6, ROOM.height / 2, 0);
   scene.add(right);
 
   // 좌측 서가 벽 (-X)
-  const left = panel(shelf, ROOM.depth + 4, ROOM.height + 2.4);
+  const left = panel(shelf, ROOM.depth + 4, ROOM.height + 2.4, 2, 3);
   left.rotation.y = Math.PI / 2;
   left.position.set(-ROOM.halfW - 0.6, ROOM.height / 2, 0);
   scene.add(left);
