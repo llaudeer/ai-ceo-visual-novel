@@ -8,9 +8,15 @@ function load(url) {
     loader.load(url, tex => {
       tex.colorSpace = THREE.SRGBColorSpace;
       // 백드롭 크롭은 작다(580x400, 800x156). 큰 벽에 그대로 늘이면 가로로 뭉개지므로
-      // 거울 반복으로 타일링한다. 거울이라 이음매가 생기지 않는다.
-      tex.wrapS = THREE.MirroredRepeatWrapping;
-      tex.wrapT = THREE.MirroredRepeatWrapping;
+      // 반복으로 타일링한다.
+      // 거울 반복(MirroredRepeatWrapping)은 쓰지 않는다 — repeatX가 홀수든 짝수든
+      // 화면 폭(~1.3타일)에 항상 대칭축이 하나는 걸리고, 카메라가 스폰 지점에서
+      // 정면을 보므로 그 대칭축이 화면 정중앙에 나비 패턴으로 찍힌다. 실제 야경은
+      // 절대 좌우 대칭이 아니라 한눈에 합성 티가 난다. 평범한 반복은 눈에 덜 띈다 —
+      // 사람 눈은 반복은 넘어가도 대칭은 바로 잡아낸다. 이음매는 crop.mjs의 강한
+      // 블러(sigma 8)로 구조를 지워서 대응한다.
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
       resolve(tex);
     }, undefined, () => reject(new Error(`백드롭 로드 실패: ${url}`)));
   });

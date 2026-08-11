@@ -26,13 +26,21 @@ async function ceoBust() {
 /**
  * 통유리 야경. 한도윤의 네임태그(x≤1105)와 그의 머리(y≥330) 사이의 빈 구간.
  * 사람 없음.
+ *
+ * 강하게 블러·감광한다. 이 크롭은 3D에서 최대 24m 폭 벽에 평면 반복으로
+ * 늘어나 붙는 원경이다(backdrop.js). RepeatWrapping으로 이어붙이면
+ * 건물 윤곽이 또렷할수록 반복 이음매와 패턴이 눈에 띈다. 여기서 건물
+ * 형태를 흐려 "점점이 박힌 창문 불빛"으로 만들어 두면, 이어붙는 자리도
+ * 반복도 읽히지 않는다. sigma 8 / brightness 0.55 는 육안으로 확인한 값 —
+ * 더 낮추면 통유리가 그냥 안 보이고, 0.8/0.92였던 이전 값은 창틀과 간판
+ * 글자가 또렷이 남아 타일링이 바로 티가 났다.
  */
 async function windowNight() {
   await sharp(MOOD_A)
     .extract({ left: 1110, top: 125, width: 290, height: 200 })
     .resize({ width: 580, kernel: 'lanczos3' })
-    .blur(0.8)
-    .modulate({ brightness: 0.92 })
+    .blur(8)
+    .modulate({ brightness: 0.55 })
     .jpeg({ quality: 90 })
     .toFile('assets/bg/window_night.jpg');
 }
