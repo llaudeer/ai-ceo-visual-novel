@@ -5,8 +5,26 @@
  * 벽에 비스듬히 부딪혔을 때 멈춰 서지 않고 스르륵 지나가는 느낌이 여기서 나온다.
  */
 
-function overlaps(x, z, box, r) {
-  return Math.abs(x - box.x) < box.w / 2 + r && Math.abs(z - box.z) < box.d / 2 + r;
+/**
+ * 겹침 판정에 쓰는 아주 작은 여유값.
+ *
+ * x축 보정은 원을 장애물 표면에 "정확히" 접하는 좌표(box.x ± (w/2+radius))로
+ * 옮긴다. 이 값을 실수 연산으로 계산하면 반올림 때문에 |x - box.x|가 이론상
+ * 한계보다 1e-15 자릿수만큼 작게 나올 수 있다 — 즉 접했을 뿐인데 z축 보정
+ * 루프가 "아직 겹쳐 있다"고 오판해 같은 장애물을 상대로 불필요한 큰 보정을
+ * 한 번 더 적용하게 된다. 그 결과 이미 안전하게 통과한 다른 장애물 위로
+ * 플레이어가 다시 튕겨나갈 수 있다. EPS보다 얕은 "겹침"은 이런 반올림
+ * 잔여로 보고 무시한다 — 실제 게임에서 의미 있는 겹침은 센티미터
+ * 단위이므로 이 정도 여유는 실질적인 충돌 판정에 영향을 주지 않는다.
+ */
+const EPS = 1e-9;
+
+/** box와의 x·z 겹침 깊이. 양수면 그만큼 파고들어 있다는 뜻이다. */
+function penetration(x, z, box, r) {
+  return {
+    x: box.w / 2 + r - Math.abs(x - box.x),
+    z: box.d / 2 + r - Math.abs(z - box.z)
+  };
 }
 
 /**
@@ -26,21 +44,20 @@ export function resolveCollision(pos, next, obstacles, radius) {
   // 이 구분이 없으면 얇고 넓은 벽에 부딪힐 때 플레이어가 반대편 벽까지
   // 튕겨나가는 문제가 생긴다.
   for (const b of obstacles) {
-    if (!overlaps(x, z, b, radius)) continue;
-    const limitX = b.w / 2 + radius;
-    const limitZ = b.d / 2 + radius;
-    const penX = limitX - Math.abs(x - b.x);
-    const penZ = limitZ - Math.abs(z - b.z);
-    if (penX < penZ) {
+    const pen = penetration(x, z, b, radius);
+    if (pen.x <= EPS || pen.z <= EPS) continue;
+    if (pen.x < pen.z) {
+      const limitX = b.w / 2 + radius;
       x = x > b.x ? b.x + limitX : b.x - limitX;
     }
   }
 
   let z2 = next.z;
   for (const b of obstacles) {
-    if (!overlaps(x, z2, b, radius)) continue;
-    const limit = b.d / 2 + radius;
-    z2 = z2 > b.z ? b.z + limit : b.z - limit;
+    const pen = penetration(x, z2, b, radius);
+    if (pen.x <= EPS || pen.z <= EPS) continue;
+    const limitZ = b.d / 2 + radius;
+    z2 = z2 > b.z ? b.z + limitZ : b.z - limitZ;
   }
 
   return { x, z: z2 };
