@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI CEO</title>
+<style>
+  :root {
+    --aria-hex: #A855F7;
+    --aria-glow: #D8B4FE;
+    --aria-dim: #5B21B6;
+    --panel: rgba(11, 15, 26, 0.82);
+    --line: rgba(148, 163, 184, 0.22);
+    --ink: #E7ECF5;
+    --ink-dim: #94A3B8;
+    --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard",
+            "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: #05070C; overflow: hidden; }
+  body { font-family: var(--font); color: var(--ink); }
+  #stage { display: block; width: 100%; height: 100%; }
+  /* HUD는 3D 위에 겹치는 DOM 레이어. 기본은 클릭을 통과시키고, 각 패널이 되살린다. */
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    z-index: 10; overflow: hidden;
+  }
+  #boot {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center;
+    background: #05070C; color: var(--ink-dim);
+    font-size: 13px; letter-spacing: 0.08em;
+    transition: opacity 0.5s ease;
+  }
+  #boot.done { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <div id="hud"></div>
+  <div id="boot">LOADING</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
