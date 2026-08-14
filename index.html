@@ -161,13 +161,15 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var GOAL_R = 11;
   var GHOST_R = 7;
   var PLAYER_SPEED = 3.1;
-  var GHOST_SPEED_MIN = 0.82;
-  var GHOST_SPEED_MAX = 0.95;
-  var GHOST_SPEED_RAMP_PER_LAP = 0.005;
 
-  // 랩이 오를수록 유령이 플레이어 속도의 82%에서 시작해 95%까지 서서히 빨라진다.
+  // 랩 구간별로 유령 속도가 계단식으로 올라간다: 1~5랩 82%, 6~10랩 88%,
+  // 11~20랩 93%, 21랩부터는 95%로 고정.
   function ghostSpeedPerMs(lap){
-    var factor = Math.min(GHOST_SPEED_MAX, GHOST_SPEED_MIN + (lap-1)*GHOST_SPEED_RAMP_PER_LAP);
+    var factor;
+    if(lap <= 5) factor = 0.82;
+    else if(lap <= 10) factor = 0.88;
+    else if(lap <= 20) factor = 0.93;
+    else factor = 0.95;
     return PLAYER_SPEED * factor * 60 / 1000;
   }
 
@@ -318,6 +320,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var SLOW_MULT = 0.55;
   var REVERSE_MS = 1000;
   var POWERUP_TYPES = ['boost','slow','reverse'];
+  // 먹기 전에는 색으로 효과를 짐작할 수 없도록 전부 같은 색으로 보여준다.
+  // 효과별 색 구분은 먹은 뒤 상태 링(무슨 효과인지 알려주는 용도)에만 쓴다.
+  var POWERUP_MYSTERY_COLOR = '#cddcff';
   var POWERUP_COLORS = { boost:'#7cf7c4', slow:'#ffb454', reverse:'#ff6fd8' };
 
   function pointClear(x, y, obstacles, goal, minR){
@@ -554,7 +559,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         var ptype = state.powerup.type;
         addCoins(100);
         state.bonusMs += 2000;
-        burst(state.powerup.x, state.powerup.y, POWERUP_COLORS[ptype], 16);
+        burst(state.powerup.x, state.powerup.y, POWERUP_MYSTERY_COLOR, 16);
         if(ptype === 'boost'){ state.boostUntil = now + BOOST_MS; playBoost(); }
         else if(ptype === 'slow'){ state.slowUntil = now + SLOW_MS; playDebuff(); }
         else if(ptype === 'reverse'){ state.reverseUntil = now + REVERSE_MS; playDebuff(); }
@@ -667,8 +672,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.beginPath();
       ctx.moveTo(0,-POWERUP_R); ctx.lineTo(POWERUP_R,0); ctx.lineTo(0,POWERUP_R); ctx.lineTo(-POWERUP_R,0);
       ctx.closePath();
-      ctx.fillStyle = POWERUP_COLORS[pr.type];
-      ctx.shadowColor = POWERUP_COLORS[pr.type];
+      ctx.fillStyle = POWERUP_MYSTERY_COLOR;
+      ctx.shadowColor = POWERUP_MYSTERY_COLOR;
       ctx.shadowBlur = 14;
       ctx.fill();
       ctx.restore();
