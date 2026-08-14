@@ -127,11 +127,12 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     <div class="hud">
       <div><span class="label">Lap</span><span class="val" id="lap">1</span></div>
       <div><span class="label">Best</span><span class="val" id="best">0</span></div>
+      <div><span class="label">Coin</span><span class="val" id="coins">0</span></div>
       <div><span class="label">Time</span><span class="val" id="time">9.0</span></div>
     </div>
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
-      <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.<br>15랩부터는 고정된 벽도 하나씩 늘어납니다.</p>
+      <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.<br>15랩부터는 고정된 벽도 하나씩 늘어납니다.<br>유령을 아슬아슬하게 스치거나 코어를 먹으면 코인이 쌓입니다.</p>
       <button class="btn" id="start">시작</button>
     </div>
     <div class="overlay hidden" id="gameover">
@@ -148,7 +149,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <span class="cv" id="comboVal">3</span>
     </div>
   </div>
-  <p class="foot"><b>컨셉 프로토타입</b> — 다음으로는 로컬 하이스코어, 모바일 터치 조작이 추가될 예정입니다.</p>
+  <p class="foot"><b>컨셉 프로토타입</b> — 코인은 저장되지만 상점은 아직 없습니다. 다음으로는 상점 화면, 모바일 터치 조작이 추가될 예정입니다.</p>
 </div>
 <script>
 (function(){
@@ -194,6 +195,19 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function playStart(){ beep(440,0.08,'sine',0,0.12); }
   function playCollect(){ beep(660,0.09,'sine',0,0.18); beep(990,0.12,'sine',0.06,0.15); }
   function playFail(){ beep(180,0.25,'sawtooth',0,0.2); beep(90,0.3,'square',0.05,0.15); }
+  function playGraze(){ beep(1300,0.05,'sine',0,0.1); }
+  function playMini(){ beep(820,0.05,'triangle',0,0.1); }
+  function playBoost(){ beep(520,0.06,'square',0,0.14); beep(780,0.08,'square',0.05,0.12); }
+
+  // 상점 화폐: 코어를 먹거나 유령을 아슬아슬하게 스칠 때마다 1코인씩 쌓이고
+  // 새로고침해도 유지된다. 상점 자체(구매 항목)는 아직 설계 전.
+  var COIN_KEY = 'zansang_coins';
+  var totalCoins = parseInt(localStorage.getItem(COIN_KEY) || '0', 10) || 0;
+  function addCoins(n){
+    totalCoins += n;
+    localStorage.setItem(COIN_KEY, String(totalCoins));
+    document.getElementById('coins').textContent = totalCoins;
+  }
 
   var keys = {};
   window.addEventListener('keydown', function(e){
@@ -215,6 +229,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     ghosts: [],
     goal: null,
     obstacles: [],
+    minis: [],
+    powerup: null,
+    boostUntil: 0,
     shake:0,
     particles: []
   };
@@ -285,6 +302,50 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     return {x:SPAWN_X,y:80};
   }
 
+  var MINI_R = 4;
+  var POWERUP_R = 8;
+  var NEAR_MISS_R = 16;
+  var BOOST_MS = 2000;
+  var BOOST_MULT = 1.35;
+
+  function pointClear(x, y, obstacles, goal, minR){
+    if(dist(x,y,goal.x,goal.y) < minR + GOAL_R) return false;
+    if(dist(x,y,SPAWN_X,SPAWN_Y) < minR + 40) return false;
+    for(var i=0;i<obstacles.length;i++){
+      if(rectCircleOverlap(obstacles[i], x, y, minR+6)) return false;
+    }
+    return true;
+  }
+
+  function randMinis(obstacles, goal){
+    var minis = [];
+    var count = 2 + Math.floor(Math.random()*2);
+    var tries = 0;
+    while(minis.length < count && tries < 200){
+      tries++;
+      var x = 40 + Math.random()*(W-80);
+      var y = 40 + Math.random()*(H-80);
+      if(!pointClear(x, y, obstacles, goal, MINI_R)) continue;
+      var tooClose = false;
+      for(var i=0;i<minis.length;i++){ if(dist(x,y,minis[i].x,minis[i].y) < 40){ tooClose=true; break; } }
+      if(tooClose) continue;
+      minis.push({x:x, y:y, taken:false});
+    }
+    return minis;
+  }
+
+  function randPowerup(obstacles, goal){
+    if(Math.random() > 0.25) return null;
+    var tries = 0;
+    while(tries < 200){
+      tries++;
+      var x = 40 + Math.random()*(W-80);
+      var y = 40 + Math.random()*(H-80);
+      if(pointClear(x, y, obstacles, goal, POWERUP_R)) return {x:x, y:y};
+    }
+    return null;
+  }
+
   var ghostPalette = ['#8b7bff','#c17bff','#7b5bff','#5b3fbf','#3a2a80'];
 
   function resetRun(){
@@ -303,6 +364,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     state.path = [];
     state.obstacles = randObstacles(obstacleCountForLap(state.lap));
     state.goal = randGoal(state.obstacles);
+    state.minis = randMinis(state.obstacles, state.goal);
+    state.powerup = randPowerup(state.obstacles, state.goal);
+    for(var gi=0; gi<state.ghosts.length; gi++){ state.ghosts[gi].grazing = false; }
     document.getElementById('lap').textContent = state.lap;
   }
 
@@ -348,6 +412,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function completeGoal(){
     burst(state.goal.x, state.goal.y, '#ffcf5c', 22);
     playCollect();
+    addCoins(1);
     if(state.pausedThisLap){ state.streak = 0; } else { state.streak += 1; }
     updateCombo();
     state.ghosts.unshift(buildGhostPath(state.path));
@@ -431,9 +496,10 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     if(state.running === true && state.moveStarted){
       if(ax===0 && ay===0) state.pausedThisLap = true;
+      var speed = (now < state.boostUntil) ? PLAYER_SPEED*BOOST_MULT : PLAYER_SPEED;
       var len = Math.hypot(ax,ay) || 1;
-      var tryX = state.px + (ax/len)*PLAYER_SPEED;
-      var tryY = state.py + (ay/len)*PLAYER_SPEED;
+      var tryX = state.px + (ax/len)*speed;
+      var tryY = state.py + (ay/len)*speed;
       tryX = Math.max(PLAYER_R, Math.min(W-PLAYER_R, tryX));
       tryY = Math.max(PLAYER_R, Math.min(H-PLAYER_R, tryY));
 
@@ -446,12 +512,40 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       if(!blockedY) state.py = tryY;
       state.path.push({t:elapsed, x:state.px, y:state.py});
 
+      for(var mi=0; mi<state.minis.length; mi++){
+        var mn = state.minis[mi];
+        if(!mn.taken && dist(state.px,state.py,mn.x,mn.y) < PLAYER_R+MINI_R+2){
+          mn.taken = true;
+          burst(mn.x, mn.y, '#bfe9ff', 8);
+          playMini();
+        }
+      }
+
+      if(state.powerup && dist(state.px,state.py,state.powerup.x,state.powerup.y) < PLAYER_R+POWERUP_R){
+        burst(state.powerup.x, state.powerup.y, '#7cf7c4', 16);
+        playBoost();
+        state.boostUntil = now + BOOST_MS;
+        state.powerup = null;
+      }
+
       if(elapsed > 550){
         for(var gi=0; gi<state.ghosts.length; gi++){
-          var ghostPos = ghostPosAt(state.ghosts[gi], elapsed);
-          if(ghostPos && dist(state.px,state.py,ghostPos.x,ghostPos.y) < PLAYER_R+GHOST_R-5){
+          var gpObj = state.ghosts[gi];
+          var ghostPos = ghostPosAt(gpObj, elapsed);
+          if(!ghostPos) continue;
+          var gd = dist(state.px,state.py,ghostPos.x,ghostPos.y);
+          if(gd < PLAYER_R+GHOST_R-5){
             fail();
             break;
+          } else if(gd < NEAR_MISS_R){
+            if(!gpObj.grazing){
+              gpObj.grazing = true;
+              addCoins(1);
+              burst(state.px, state.py, '#e8f7ff', 6);
+              playGraze();
+            }
+          } else {
+            gpObj.grazing = false;
           }
         }
       }
@@ -520,6 +614,34 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.globalAlpha = 1;
     }
 
+    for(var mi=0; mi<state.minis.length; mi++){
+      var mn = state.minis[mi];
+      if(mn.taken) continue;
+      ctx.beginPath();
+      ctx.arc(mn.x, mn.y, MINI_R, 0, Math.PI*2);
+      ctx.fillStyle = '#bfe9ff';
+      ctx.globalAlpha = 0.75 + Math.sin(performance.now()/300 + mi)*0.15;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    if(state.powerup){
+      var pr = state.powerup;
+      var spin = performance.now()/500;
+      ctx.save();
+      ctx.translate(pr.x, pr.y);
+      ctx.rotate(spin);
+      ctx.beginPath();
+      ctx.moveTo(0,-POWERUP_R); ctx.lineTo(POWERUP_R,0); ctx.lineTo(0,POWERUP_R); ctx.lineTo(-POWERUP_R,0);
+      ctx.closePath();
+      ctx.fillStyle = '#7cf7c4';
+      ctx.shadowColor = 'rgba(124,247,196,0.8)';
+      ctx.shadowBlur = 14;
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+
     if(state.goal){
       var pulse = 1 + Math.sin(performance.now()/220)*0.12;
       var pingT = (performance.now()/900) % 1;
@@ -550,6 +672,14 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.arc(state.px, state.py, PLAYER_R + 5 + Math.sin(performance.now()/60)*1.5, 0, Math.PI*2);
       ctx.strokeStyle = 'rgba(91,232,255,0.4)';
       ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    if(performance.now() < state.boostUntil){
+      ctx.beginPath();
+      ctx.arc(state.px, state.py, PLAYER_R + 4, 0, Math.PI*2);
+      ctx.strokeStyle = '#7cf7c4';
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
 
@@ -590,6 +720,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     resetRun();
   });
 
+  document.getElementById('coins').textContent = totalCoins;
   draw(0);
   requestAnimationFrame(tick);
 })();
