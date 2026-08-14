@@ -73,10 +73,17 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   font-size:20px;font-weight:500;margin:0;
   color:var(--text);
 }
+.overlay h2.danger{color:var(--danger)}
 .overlay p{
   font-size:13px;color:var(--text-dim);margin:0;
   max-width:280px;line-height:1.6;
 }
+.stats{
+  display:flex;gap:24px;margin:2px 0 4px;
+}
+.stats .stat{display:flex;flex-direction:column;align-items:center;gap:4px}
+.stats .stat span:first-child{font-size:11px;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase}
+.stats .stat span:last-child{font-size:22px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums}
 .btn{
   margin-top:6px;
   padding:9px 20px;
@@ -107,12 +114,21 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     <div class="hud">
       <div><span class="label">Lap</span><span class="val" id="lap">1</span></div>
       <div><span class="label">Best</span><span class="val" id="best">0</span></div>
-      <div><span class="label">Time</span><span class="val" id="time">12.0</span></div>
+      <div><span class="label">Time</span><span class="val" id="time">9.0</span></div>
     </div>
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
       <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.</p>
       <button class="btn" id="start">시작</button>
+    </div>
+    <div class="overlay hidden" id="gameover">
+      <h2 class="danger">게임 오버</h2>
+      <div class="stats">
+        <div class="stat"><span>도달 랩</span><span id="finalLap">0</span></div>
+        <div class="stat"><span>최고 기록</span><span id="finalBest">0</span></div>
+      </div>
+      <p>과거의 나에게 붙잡혔습니다.</p>
+      <button class="btn" id="restart">다시 시작</button>
     </div>
   </div>
   <p class="foot"><b>컨셉 프로토타입</b> — 실제 빌드에서는 사운드, 파티클, 정적 장애물, 로컬 하이스코어가 추가됩니다.</p>
@@ -122,7 +138,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
   var W = canvas.width, H = canvas.height;
-  var LAP_MS = 12000;
+  var LAP_MS = 9000;
   var PLAYER_R = 7;
   var GOAL_R = 11;
   var GHOST_R = 7;
@@ -179,10 +195,15 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function fail(){
     state.shake = 14;
     burst(state.px, state.py, '#ff5c7a', 26);
-    if(state.lap-1 > state.best){ state.best = state.lap-1; document.getElementById('best').textContent = state.best; }
-    setTimeout(resetRun, 420);
+    var reached = state.lap - 1;
+    if(reached > state.best){ state.best = reached; document.getElementById('best').textContent = state.best; }
     state.running = 'stunned';
-    setTimeout(function(){ state.running = true; }, 420);
+    setTimeout(function(){
+      document.getElementById('finalLap').textContent = reached;
+      document.getElementById('finalBest').textContent = state.best;
+      document.getElementById('gameover').classList.remove('hidden');
+      state.running = false;
+    }, 500);
   }
 
   function completeGoal(){
@@ -371,6 +392,12 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   document.getElementById('start').addEventListener('click', function(){
     document.getElementById('overlay').classList.add('hidden');
+    state.running = true;
+    resetRun();
+  });
+
+  document.getElementById('restart').addEventListener('click', function(){
+    document.getElementById('gameover').classList.add('hidden');
     state.running = true;
     resetRun();
   });
