@@ -343,7 +343,6 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(state.pausedThisLap){ state.streak = 0; } else { state.streak += 1; }
     updateCombo();
     state.ghosts.unshift(buildGhostPath(state.path));
-    if(state.ghosts.length > 5) state.ghosts.pop();
     nextLap();
   }
 
@@ -351,7 +350,6 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     state.streak = 0;
     updateCombo();
     state.ghosts.unshift(buildGhostPath(state.path));
-    if(state.ghosts.length > 5) state.ghosts.pop();
     nextLap();
   }
 
