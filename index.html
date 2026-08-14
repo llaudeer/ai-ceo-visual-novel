@@ -98,6 +98,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   cursor:pointer;
 }
 .btn:hover{border-color:var(--player);color:var(--player)}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--line);color:var(--text)}
+.btnRow{display:flex;gap:10px}
 .foot{
   font-size:11px;color:var(--text-dim);
   letter-spacing:0.03em;
@@ -133,7 +136,10 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
       <p>화살표 또는 WASD로 이동해 파란 점을 모두 모으면 금빛 코어가 나타납니다.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.<br>15랩부터는 고정된 벽도 하나씩 늘어납니다.<br>시간 초과 시 게임 오버! 회전하는 아이템은 가속/감속/방향반전 중 하나입니다.<br>유령을 스치거나 뭘 먹든 코인이 쌓입니다.</p>
-      <button class="btn" id="start">시작</button>
+      <div class="btnRow">
+        <button class="btn" id="start">시작</button>
+        <button class="btn" id="shopOpenStart">상점</button>
+      </div>
     </div>
     <div class="overlay hidden" id="gameover">
       <h2 class="danger">게임 오버</h2>
@@ -142,14 +148,30 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <div class="stat"><span>최고 기록</span><span id="finalBest">0</span></div>
       </div>
       <p id="gameoverMsg">과거의 나에게 붙잡혔습니다.</p>
-      <button class="btn" id="restart">다시 시작</button>
+      <div class="btnRow">
+        <button class="btn" id="restart">다시 시작</button>
+        <button class="btn" id="shopOpenGameover">상점</button>
+      </div>
+    </div>
+    <div class="overlay hidden" id="shop">
+      <h2>상점</h2>
+      <p>영구 스피드 업그레이드 — 내 속도만 빨라지고 유령 속도는 그대로입니다.</p>
+      <div class="stats">
+        <div class="stat"><span>레벨</span><span id="shopLevel">0</span></div>
+        <div class="stat"><span>보너스</span><span id="shopBonus">+0%</span></div>
+        <div class="stat"><span>보유 코인</span><span id="shopCoins">0</span></div>
+      </div>
+      <div class="btnRow">
+        <button class="btn" id="shopBuy">구매</button>
+        <button class="btn" id="shopClose">닫기</button>
+      </div>
     </div>
     <div class="combo" id="combo">
       <span class="cl">연속</span>
       <span class="cv" id="comboVal">3</span>
     </div>
   </div>
-  <p class="foot"><b>컨셉 프로토타입</b> — 코인은 저장되지만 상점은 아직 없습니다. 다음으로는 상점 화면, 모바일 터치 조작이 추가될 예정입니다.</p>
+  <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드 업그레이드를 살 수 있습니다. 다음으로는 모바일 터치 조작이 추가될 예정입니다.</p>
 </div>
 <script>
 (function(){
@@ -202,16 +224,44 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function playBoost(){ beep(520,0.06,'square',0,0.14); beep(780,0.08,'square',0.05,0.12); }
   function playDebuff(){ beep(420,0.08,'square',0,0.12); beep(260,0.1,'square',0.05,0.12); }
   function playReveal(){ beep(880,0.1,'sine',0,0.15); beep(1320,0.14,'sine',0.08,0.12); }
+  function playPurchase(){ beep(660,0.07,'sine',0,0.15); beep(880,0.07,'sine',0.05,0.15); beep(1100,0.1,'sine',0.1,0.14); }
 
   // 상점 화폐: 코어(500), 미니 픽업(100), 파워업(100), 니어미스(50),
   // 논스톱 콤보(3 이상부터 콤보당 50)로 쌓이고 새로고침해도 유지된다.
-  // 상점 자체(구매 항목)는 아직 설계 전.
   var COIN_KEY = 'zansang_coins';
   var totalCoins = parseInt(localStorage.getItem(COIN_KEY) || '0', 10) || 0;
   function addCoins(n){
     totalCoins += n;
     localStorage.setItem(COIN_KEY, String(totalCoins));
     document.getElementById('coins').textContent = totalCoins;
+  }
+
+  // 영구 스피드 업그레이드. 0=미구매, 1~5레벨.
+  // 유령 속도는 이 배율을 절대 참조하지 않는다 — ghostSpeedPerMs는 기본
+  // PLAYER_SPEED 상수만 쓰므로, 업그레이드를 사도 잔상은 그대로 원래 속도.
+  var SPEED_KEY = 'zansang_speedLevel';
+  var SPEED_BONUS_PCT = [0, 3, 5, 7, 10, 13];
+  var SPEED_LEVEL_COST = [0, 1000, 2500, 5000, 9000, 15000];
+  var speedLevel = parseInt(localStorage.getItem(SPEED_KEY) || '0', 10) || 0;
+  if(speedLevel < 0 || speedLevel > 5) speedLevel = 0;
+
+  function playerSpeedMultiplier(){
+    return 1 + SPEED_BONUS_PCT[speedLevel]/100;
+  }
+
+  function updateShopUI(){
+    document.getElementById('shopLevel').textContent = speedLevel + ' / 5';
+    document.getElementById('shopBonus').textContent = '+' + SPEED_BONUS_PCT[speedLevel] + '%';
+    document.getElementById('shopCoins').textContent = totalCoins;
+    var buyBtn = document.getElementById('shopBuy');
+    if(speedLevel >= 5){
+      buyBtn.textContent = '최대 레벨 달성';
+      buyBtn.disabled = true;
+    } else {
+      var cost = SPEED_LEVEL_COST[speedLevel+1];
+      buyBtn.textContent = '다음 레벨 구매 — ' + cost + '코인 (+' + SPEED_BONUS_PCT[speedLevel+1] + '%)';
+      buyBtn.disabled = totalCoins < cost;
+    }
   }
 
   var keys = {};
@@ -514,9 +564,10 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     if(state.running === true && state.moveStarted){
       if(ax===0 && ay===0) state.pausedThisLap = true;
-      var speed = PLAYER_SPEED;
-      if(now < state.boostUntil) speed = PLAYER_SPEED*BOOST_MULT;
-      else if(now < state.slowUntil) speed = PLAYER_SPEED*SLOW_MULT;
+      var baseSpeed = PLAYER_SPEED * playerSpeedMultiplier();
+      var speed = baseSpeed;
+      if(now < state.boostUntil) speed = baseSpeed*BOOST_MULT;
+      else if(now < state.slowUntil) speed = baseSpeed*SLOW_MULT;
       var mvAx = ax, mvAy = ay;
       if(now < state.reverseUntil){ mvAx = -ax; mvAy = -ay; }
       var len = Math.hypot(mvAx,mvAy) || 1;
@@ -769,6 +820,31 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     document.getElementById('gameover').classList.add('hidden');
     state.running = true;
     resetRun();
+  });
+
+  var shopReturnId = 'overlay';
+  function openShop(returnId){
+    ensureAudio();
+    shopReturnId = returnId;
+    updateShopUI();
+    document.getElementById(returnId).classList.add('hidden');
+    document.getElementById('shop').classList.remove('hidden');
+  }
+  document.getElementById('shopOpenStart').addEventListener('click', function(){ openShop('overlay'); });
+  document.getElementById('shopOpenGameover').addEventListener('click', function(){ openShop('gameover'); });
+  document.getElementById('shopClose').addEventListener('click', function(){
+    document.getElementById('shop').classList.add('hidden');
+    document.getElementById(shopReturnId).classList.remove('hidden');
+  });
+  document.getElementById('shopBuy').addEventListener('click', function(){
+    if(speedLevel >= 5) return;
+    var cost = SPEED_LEVEL_COST[speedLevel+1];
+    if(totalCoins < cost) return;
+    addCoins(-cost);
+    speedLevel += 1;
+    localStorage.setItem(SPEED_KEY, String(speedLevel));
+    playPurchase();
+    updateShopUI();
   });
 
   document.getElementById('coins').textContent = totalCoins;
