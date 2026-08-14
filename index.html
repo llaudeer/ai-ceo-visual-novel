@@ -240,21 +240,22 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   // 유령 속도는 이 배율을 절대 참조하지 않는다 — ghostSpeedPerMs는 기본
   // PLAYER_SPEED 상수만 쓰므로, 업그레이드를 사도 잔상은 그대로 원래 속도.
   var SPEED_KEY = 'zansang_speedLevel';
-  var SPEED_BONUS_PCT = [0, 3, 5, 7, 10, 13];
-  var SPEED_LEVEL_COST = [0, 1000, 2500, 5000, 9000, 15000];
+  var SPEED_MAX_LEVEL = 3;
+  var SPEED_BONUS_PCT = [0, 5, 7, 10];
+  var SPEED_LEVEL_COST = [0, 1000, 2500, 5000];
   var speedLevel = parseInt(localStorage.getItem(SPEED_KEY) || '0', 10) || 0;
-  if(speedLevel < 0 || speedLevel > 5) speedLevel = 0;
+  if(speedLevel < 0 || speedLevel > SPEED_MAX_LEVEL) speedLevel = Math.min(Math.max(speedLevel,0), SPEED_MAX_LEVEL);
 
   function playerSpeedMultiplier(){
     return 1 + SPEED_BONUS_PCT[speedLevel]/100;
   }
 
   function updateShopUI(){
-    document.getElementById('shopLevel').textContent = speedLevel + ' / 5';
+    document.getElementById('shopLevel').textContent = speedLevel + ' / ' + SPEED_MAX_LEVEL;
     document.getElementById('shopBonus').textContent = '+' + SPEED_BONUS_PCT[speedLevel] + '%';
     document.getElementById('shopCoins').textContent = totalCoins;
     var buyBtn = document.getElementById('shopBuy');
-    if(speedLevel >= 5){
+    if(speedLevel >= SPEED_MAX_LEVEL){
       buyBtn.textContent = '최대 레벨 달성';
       buyBtn.disabled = true;
     } else {
@@ -837,7 +838,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     document.getElementById(shopReturnId).classList.remove('hidden');
   });
   document.getElementById('shopBuy').addEventListener('click', function(){
-    if(speedLevel >= 5) return;
+    if(speedLevel >= SPEED_MAX_LEVEL) return;
     var cost = SPEED_LEVEL_COST[speedLevel+1];
     if(totalCoins < cost) return;
     addCoins(-cost);
