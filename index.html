@@ -124,7 +124,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var W = canvas.width, H = canvas.height;
   var LAP_MS = 12000;
   var PLAYER_R = 7;
-  var GOAL_R = 10;
+  var GOAL_R = 11;
   var GHOST_R = 7;
 
   var keys = {};
@@ -140,6 +140,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     best:0,
     lapStart:0,
     px: W/2, py: H-40, vx:0, vy:0,
+    moveStarted:false, moveStart:0,
     path: [],
     ghosts: [],
     goal: null,
@@ -160,7 +161,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   function startLap(){
-    state.lapStart = performance.now();
+    state.moveStarted = false;
+    state.moveStart = 0;
     state.px = W/2; state.py = H-40; state.vx=0; state.vy=0;
     state.path = [];
     state.goal = randGoal();
@@ -205,17 +207,26 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(!state.running) return;
 
     var now = performance.now();
-    var elapsed = now - state.lapStart;
-    var t = Math.min(elapsed, LAP_MS);
-    document.getElementById('time').textContent = ((LAP_MS - t)/1000).toFixed(1);
 
     if(state.running === true){
-      var speed = 3.1;
       var ax=0, ay=0;
       if(keys['arrowleft']||keys['a']) ax -= 1;
       if(keys['arrowright']||keys['d']) ax += 1;
       if(keys['arrowup']||keys['w']) ay -= 1;
       if(keys['arrowdown']||keys['s']) ay += 1;
+
+      if(!state.moveStarted && (ax!==0 || ay!==0)){
+        state.moveStarted = true;
+        state.moveStart = now;
+      }
+    }
+
+    var elapsed = state.moveStarted ? (now - state.moveStart) : 0;
+    var t = Math.min(elapsed, LAP_MS);
+    document.getElementById('time').textContent = ((LAP_MS - t)/1000).toFixed(1);
+
+    if(state.running === true && state.moveStarted){
+      var speed = 3.1;
       var len = Math.hypot(ax,ay) || 1;
       state.px += (ax/len)*speed;
       state.py += (ay/len)*speed;
@@ -299,20 +310,34 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.beginPath();
       ctx.arc(pos.x,pos.y,GHOST_R,0,Math.PI*2);
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.7;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
 
     if(state.goal){
       var pulse = 1 + Math.sin(performance.now()/220)*0.12;
+      var pingT = (performance.now()/900) % 1;
+
+      ctx.beginPath();
+      ctx.arc(state.goal.x, state.goal.y, GOAL_R + pingT*24, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(255,207,92,' + (0.55*(1-pingT)) + ')';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
       ctx.beginPath();
       ctx.arc(state.goal.x, state.goal.y, GOAL_R*pulse, 0, Math.PI*2);
-      ctx.fillStyle = '#ffcf5c';
-      ctx.shadowColor = 'rgba(255,207,92,0.7)';
-      ctx.shadowBlur = 18;
+      ctx.fillStyle = '#ffe6a8';
+      ctx.shadowColor = 'rgba(255,207,92,0.95)';
+      ctx.shadowBlur = 26;
       ctx.fill();
       ctx.shadowBlur = 0;
+
+      ctx.beginPath();
+      ctx.arc(state.goal.x, state.goal.y, GOAL_R*pulse, 0, Math.PI*2);
+      ctx.strokeStyle = '#fff6df';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
 
     if(elapsed < 550){
