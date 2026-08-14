@@ -118,7 +118,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     </div>
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
-      <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.</p>
+      <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.<br>15랩부터는 고정된 벽도 하나씩 늘어납니다.</p>
       <button class="btn" id="start">시작</button>
     </div>
     <div class="overlay hidden" id="gameover">
@@ -131,7 +131,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <button class="btn" id="restart">다시 시작</button>
     </div>
   </div>
-  <p class="foot"><b>컨셉 프로토타입</b> — 실제 빌드에서는 사운드, 파티클, 정적 장애물, 로컬 하이스코어가 추가됩니다.</p>
+  <p class="foot"><b>컨셉 프로토타입</b> — 다음으로는 로컬 하이스코어, 모바일 터치 조작이 추가될 예정입니다.</p>
 </div>
 <script>
 (function(){
@@ -144,6 +144,31 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var GHOST_R = 7;
   var PLAYER_SPEED = 3.1;
   var GHOST_SPEED_PER_MS = PLAYER_SPEED * 60 / 1000;
+
+  var audioCtx = null;
+  function ensureAudio(){
+    if(!audioCtx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, dur, type, delay, vol){
+    if(!audioCtx) return;
+    var t0 = audioCtx.currentTime + (delay||0);
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(vol||0.18, t0+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(t0); osc.stop(t0+dur+0.02);
+  }
+  function playStart(){ beep(440,0.08,'sine',0,0.12); }
+  function playCollect(){ beep(660,0.09,'sine',0,0.18); beep(990,0.12,'sine',0.06,0.15); }
+  function playFail(){ beep(180,0.25,'sawtooth',0,0.2); beep(90,0.3,'square',0.05,0.15); }
 
   var keys = {};
   window.addEventListener('keydown', function(e){
@@ -162,12 +187,65 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     path: [],
     ghosts: [],
     goal: null,
+    obstacles: [],
     shake:0,
     particles: []
   };
 
-  function randGoal(){
-    return { x: 60 + Math.random()*(W-120), y: 50 + Math.random()*(H-160) };
+  var SPAWN_X = W/2, SPAWN_Y = H-40;
+
+  function rectCircleOverlap(rect, cx, cy, r){
+    var closestX = Math.max(rect.x, Math.min(cx, rect.x+rect.w));
+    var closestY = Math.max(rect.y, Math.min(cy, rect.y+rect.h));
+    var dx = cx-closestX, dy = cy-closestY;
+    return (dx*dx+dy*dy) < r*r;
+  }
+
+  function rectsOverlap(a,b,pad){
+    return !(a.x+a.w+pad < b.x || b.x+b.w+pad < a.x || a.y+a.h+pad < b.y || b.y+b.h+pad < a.y);
+  }
+
+  // 15랩까지는 장애물 없이 유령 회피에만 집중하게 두고, 그 이후부터
+  // 한 랩에 하나씩(최대 6개) 늘려 난이도를 서서히 올린다.
+  function obstacleCountForLap(lap){
+    return Math.max(0, Math.min(6, lap - 14));
+  }
+
+  function randObstacles(count){
+    var obs = [];
+    var tries = 0;
+    while(obs.length < count && tries < 300){
+      tries++;
+      var w = 46 + Math.random()*54;
+      var h = 14 + Math.random()*12;
+      if(Math.random() < 0.5){ var tmp=w; w=h; h=tmp; }
+      var rect = {
+        x: 24 + Math.random()*(W-48-w),
+        y: 24 + Math.random()*(H-48-h),
+        w: w, h: h
+      };
+      if(rectCircleOverlap(rect, SPAWN_X, SPAWN_Y, 60)) continue;
+      var overlaps = false;
+      for(var i=0;i<obs.length;i++){ if(rectsOverlap(rect,obs[i],14)){ overlaps=true; break; } }
+      if(overlaps) continue;
+      obs.push(rect);
+    }
+    return obs;
+  }
+
+  function randGoal(obstacles){
+    var tries = 0;
+    while(tries < 300){
+      tries++;
+      var gx = 60 + Math.random()*(W-120);
+      var gy = 50 + Math.random()*(H-160);
+      var ok = true;
+      for(var i=0;i<obstacles.length;i++){
+        if(rectCircleOverlap(obstacles[i], gx, gy, GOAL_R+10)){ ok=false; break; }
+      }
+      if(ok) return {x:gx,y:gy};
+    }
+    return {x:SPAWN_X,y:80};
   }
 
   var ghostPalette = ['#8b7bff','#c17bff','#7b5bff','#5b3fbf','#3a2a80'];
@@ -181,9 +259,10 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function startLap(){
     state.moveStarted = false;
     state.moveStart = 0;
-    state.px = W/2; state.py = H-40; state.vx=0; state.vy=0;
+    state.px = SPAWN_X; state.py = SPAWN_Y; state.vx=0; state.vy=0;
     state.path = [];
-    state.goal = randGoal();
+    state.obstacles = randObstacles(obstacleCountForLap(state.lap));
+    state.goal = randGoal(state.obstacles);
     document.getElementById('lap').textContent = state.lap;
   }
 
@@ -197,6 +276,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function fail(){
     state.shake = 14;
     burst(state.px, state.py, '#ff5c7a', 26);
+    playFail();
     var reached = state.lap - 1;
     if(reached > state.best){ state.best = reached; document.getElementById('best').textContent = state.best; }
     state.running = 'stunned';
@@ -225,6 +305,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   function completeGoal(){
     burst(state.goal.x, state.goal.y, '#ffcf5c', 22);
+    playCollect();
     state.ghosts.unshift(buildGhostPath(state.path));
     if(state.ghosts.length > 5) state.ghosts.pop();
     nextLap();
@@ -306,10 +387,18 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     if(state.running === true && state.moveStarted){
       var len = Math.hypot(ax,ay) || 1;
-      state.px += (ax/len)*PLAYER_SPEED;
-      state.py += (ay/len)*PLAYER_SPEED;
-      state.px = Math.max(PLAYER_R, Math.min(W-PLAYER_R, state.px));
-      state.py = Math.max(PLAYER_R, Math.min(H-PLAYER_R, state.py));
+      var tryX = state.px + (ax/len)*PLAYER_SPEED;
+      var tryY = state.py + (ay/len)*PLAYER_SPEED;
+      tryX = Math.max(PLAYER_R, Math.min(W-PLAYER_R, tryX));
+      tryY = Math.max(PLAYER_R, Math.min(H-PLAYER_R, tryY));
+
+      var blockedX = false, blockedY = false;
+      for(var oi=0; oi<state.obstacles.length; oi++){
+        if(rectCircleOverlap(state.obstacles[oi], tryX, state.py, PLAYER_R)) blockedX = true;
+        if(rectCircleOverlap(state.obstacles[oi], state.px, tryY, PLAYER_R)) blockedY = true;
+      }
+      if(!blockedX) state.px = tryX;
+      if(!blockedY) state.py = tryY;
       state.path.push({t:elapsed, x:state.px, y:state.py});
 
       if(elapsed > 550){
@@ -352,6 +441,15 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     ctx.lineWidth = 1;
     for(var gx=0; gx<W; gx+=28){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
     for(var gy=0; gy<H; gy+=28){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+    for(var oi=0; oi<state.obstacles.length; oi++){
+      var ob = state.obstacles[oi];
+      ctx.fillStyle = '#333c4d';
+      ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+      ctx.strokeStyle = '#4a5468';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ob.x+0.5, ob.y+0.5, ob.w-1, ob.h-1);
+    }
 
     for(var gi=state.ghosts.length-1; gi>=0; gi--){
       var gp = state.ghosts[gi];
@@ -432,12 +530,16 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   document.getElementById('start').addEventListener('click', function(){
+    ensureAudio();
+    playStart();
     document.getElementById('overlay').classList.add('hidden');
     state.running = true;
     resetRun();
   });
 
   document.getElementById('restart').addEventListener('click', function(){
+    ensureAudio();
+    playStart();
     document.getElementById('gameover').classList.add('hidden');
     state.running = true;
     resetRun();
