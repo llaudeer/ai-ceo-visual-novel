@@ -160,7 +160,15 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var GOAL_R = 11;
   var GHOST_R = 7;
   var PLAYER_SPEED = 3.1;
-  var GHOST_SPEED_PER_MS = PLAYER_SPEED * 0.82 * 60 / 1000;
+  var GHOST_SPEED_MIN = 0.82;
+  var GHOST_SPEED_MAX = 0.95;
+  var GHOST_SPEED_RAMP_PER_LAP = 0.005;
+
+  // 랩이 오를수록 유령이 플레이어 속도의 82%에서 시작해 95%까지 서서히 빨라진다.
+  function ghostSpeedPerMs(lap){
+    var factor = Math.min(GHOST_SPEED_MAX, GHOST_SPEED_MIN + (lap-1)*GHOST_SPEED_RAMP_PER_LAP);
+    return PLAYER_SPEED * factor * 60 / 1000;
+  }
 
   var audioCtx = null;
   function ensureAudio(){
@@ -375,7 +383,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   function ghostPosAt(gp, elapsed){
     if(gp.pts.length===0) return null;
-    var targetDist = elapsed * GHOST_SPEED_PER_MS;
+    var targetDist = elapsed * ghostSpeedPerMs(state.lap);
     if(targetDist <= 0 || gp.total<=0) return gp.pts[0];
     if(targetDist >= gp.total) return gp.pts[gp.pts.length-1];
     for(var i=1;i<gp.cum.length;i++){
@@ -390,7 +398,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   function ghostTraveledIndex(gp, elapsed){
-    var targetDist = elapsed * GHOST_SPEED_PER_MS;
+    var targetDist = elapsed * ghostSpeedPerMs(state.lap);
     var idx = 0;
     for(var i=0;i<gp.cum.length;i++){
       if(gp.cum[i] <= targetDist) idx = i; else break;
