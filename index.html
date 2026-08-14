@@ -100,7 +100,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 .btn:hover{border-color:var(--player);color:var(--player)}
 .btn:disabled{opacity:0.4;cursor:not-allowed}
 .btn:disabled:hover{border-color:var(--line);color:var(--text)}
-.btnRow{display:flex;gap:10px}
+.btnRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn-dev{border-color:var(--danger);color:var(--danger)}
+.btn-dev:hover{border-color:var(--danger);color:var(--danger);opacity:0.8}
 .foot{
   font-size:11px;color:var(--text-dim);
   letter-spacing:0.03em;
@@ -151,6 +153,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <div class="btnRow">
         <button class="btn" id="restart">다시 시작</button>
         <button class="btn" id="shopOpenGameover">상점</button>
+        <!-- 개발용 버튼 — 출시 전 제거 -->
+        <button class="btn btn-dev" id="resetAll">전체 초기화</button>
       </div>
     </div>
     <div class="overlay hidden" id="shop">
@@ -846,6 +850,13 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     localStorage.setItem(SPEED_KEY, String(speedLevel));
     playPurchase();
     updateShopUI();
+  });
+
+  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨 저장값을 전부 지우고 새로고침한다.
+  document.getElementById('resetAll').addEventListener('click', function(){
+    localStorage.removeItem(COIN_KEY);
+    localStorage.removeItem(SPEED_KEY);
+    location.reload();
   });
 
   document.getElementById('coins').textContent = totalCoins;
