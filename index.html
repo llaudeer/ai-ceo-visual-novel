@@ -208,19 +208,32 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     }, 500);
   }
 
+  // 별을 먹은 순간 곧바로 다음 랩이 시작되면 이동 중이던 키를 놓을 새가 없어
+  // 다음 랩의 유령이 즉시 움직이는 것처럼 보인다. 짧은 정지 구간을 두어
+  // 실제로 키에서 손을 뗄 시간을 준 뒤 다음 랩을 시작한다.
+  function nextLap(){
+    state.lap += 1;
+    state.goal = null;
+    state.moveStarted = false;
+    state.running = 'transition';
+    document.getElementById('lap').textContent = state.lap;
+    setTimeout(function(){
+      startLap();
+      state.running = true;
+    }, 500);
+  }
+
   function completeGoal(){
     burst(state.goal.x, state.goal.y, '#ffcf5c', 22);
     state.ghosts.unshift(buildGhostPath(state.path));
     if(state.ghosts.length > 5) state.ghosts.pop();
-    state.lap += 1;
-    startLap();
+    nextLap();
   }
 
   function timeoutLap(){
     state.ghosts.unshift(buildGhostPath(state.path));
     if(state.ghosts.length > 5) state.ghosts.pop();
-    state.lap += 1;
-    startLap();
+    nextLap();
   }
 
   function dist(x1,y1,x2,y2){ return Math.hypot(x1-x2,y1-y2); }
