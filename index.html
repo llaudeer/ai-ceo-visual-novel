@@ -142,6 +142,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var PLAYER_R = 7;
   var GOAL_R = 11;
   var GHOST_R = 7;
+  var PLAYER_SPEED = 3.1;
+  var GHOST_SPEED_PER_MS = PLAYER_SPEED * 60 / 1000;
 
   var keys = {};
   window.addEventListener('keydown', function(e){
@@ -208,20 +210,63 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   function completeGoal(){
     burst(state.goal.x, state.goal.y, '#ffcf5c', 22);
-    state.ghosts.unshift(state.path.slice());
+    state.ghosts.unshift(buildGhostPath(state.path));
     if(state.ghosts.length > 5) state.ghosts.pop();
     state.lap += 1;
     startLap();
   }
 
   function timeoutLap(){
-    state.ghosts.unshift(state.path.slice());
+    state.ghosts.unshift(buildGhostPath(state.path));
     if(state.ghosts.length > 5) state.ghosts.pop();
     state.lap += 1;
     startLap();
   }
 
   function dist(x1,y1,x2,y2){ return Math.hypot(x1-x2,y1-y2); }
+
+  // 기록된 시간이 아니라 이동 거리 기준으로 재생해, 원본에서 멈칫했던 구간이
+  // 유령 재생에서는 그대로 멈춤으로 나오지 않고 일정한 속도로 이어지게 한다.
+  function buildGhostPath(rawPath){
+    var pts = [];
+    for(var i=0;i<rawPath.length;i++){
+      var p = rawPath[i];
+      if(pts.length===0 || dist(pts[pts.length-1].x,pts[pts.length-1].y,p.x,p.y) > 0.01){
+        pts.push({x:p.x, y:p.y});
+      }
+    }
+    if(pts.length===0) pts.push({x:W/2,y:H-40});
+    var cum = [0];
+    for(var i=1;i<pts.length;i++){
+      cum.push(cum[i-1] + dist(pts[i-1].x,pts[i-1].y,pts[i].x,pts[i].y));
+    }
+    return { pts:pts, cum:cum, total:cum[cum.length-1] };
+  }
+
+  function ghostPosAt(gp, elapsed){
+    if(gp.pts.length===0) return null;
+    var targetDist = elapsed * GHOST_SPEED_PER_MS;
+    if(targetDist <= 0 || gp.total<=0) return gp.pts[0];
+    if(targetDist >= gp.total) return gp.pts[gp.pts.length-1];
+    for(var i=1;i<gp.cum.length;i++){
+      if(gp.cum[i] >= targetDist){
+        var segLen = gp.cum[i]-gp.cum[i-1];
+        var f = segLen>0 ? (targetDist-gp.cum[i-1])/segLen : 0;
+        var a=gp.pts[i-1], b=gp.pts[i];
+        return {x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f};
+      }
+    }
+    return gp.pts[gp.pts.length-1];
+  }
+
+  function ghostTraveledIndex(gp, elapsed){
+    var targetDist = elapsed * GHOST_SPEED_PER_MS;
+    var idx = 0;
+    for(var i=0;i<gp.cum.length;i++){
+      if(gp.cum[i] <= targetDist) idx = i; else break;
+    }
+    return idx;
+  }
 
   function tick(){
     requestAnimationFrame(tick);
@@ -247,18 +292,17 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     document.getElementById('time').textContent = ((LAP_MS - t)/1000).toFixed(1);
 
     if(state.running === true && state.moveStarted){
-      var speed = 3.1;
       var len = Math.hypot(ax,ay) || 1;
-      state.px += (ax/len)*speed;
-      state.py += (ay/len)*speed;
+      state.px += (ax/len)*PLAYER_SPEED;
+      state.py += (ay/len)*PLAYER_SPEED;
       state.px = Math.max(PLAYER_R, Math.min(W-PLAYER_R, state.px));
       state.py = Math.max(PLAYER_R, Math.min(H-PLAYER_R, state.py));
       state.path.push({t:elapsed, x:state.px, y:state.py});
 
       if(elapsed > 550){
         for(var gi=0; gi<state.ghosts.length; gi++){
-          var gp = ghostPosAt(state.ghosts[gi], elapsed);
-          if(gp && dist(state.px,state.py,gp.x,gp.y) < PLAYER_R+GHOST_R-2){
+          var ghostPos = ghostPosAt(state.ghosts[gi], elapsed);
+          if(ghostPos && dist(state.px,state.py,ghostPos.x,ghostPos.y) < PLAYER_R+GHOST_R-2){
             fail();
             break;
           }
@@ -282,20 +326,6 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     draw(elapsed);
   }
 
-  function ghostPosAt(path, elapsed){
-    if(path.length===0) return null;
-    if(elapsed <= path[0].t) return path[0];
-    if(elapsed >= path[path.length-1].t) return path[path.length-1];
-    for(var i=1;i<path.length;i++){
-      if(path[i].t >= elapsed){
-        var a=path[i-1], b=path[i];
-        var f = (elapsed-a.t)/((b.t-a.t)||1);
-        return {x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f};
-      }
-    }
-    return path[path.length-1];
-  }
-
   function draw(elapsed){
     ctx.save();
     var sx = (Math.random()-0.5)*state.shake, sy=(Math.random()-0.5)*state.shake;
@@ -311,17 +341,15 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     for(var gy=0; gy<H; gy+=28){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
 
     for(var gi=state.ghosts.length-1; gi>=0; gi--){
-      var path = state.ghosts[gi];
+      var gp = state.ghosts[gi];
       var color = ghostPalette[Math.min(gi, ghostPalette.length-1)];
-      var pos = ghostPosAt(path, elapsed);
+      var pos = ghostPosAt(gp, elapsed);
       if(!pos) continue;
+      var upTo = ghostTraveledIndex(gp, elapsed);
       ctx.beginPath();
-      var started=false;
-      for(var i=0;i<path.length;i++){
-        if(path[i].t > elapsed) break;
-        if(!started){ ctx.moveTo(path[i].x, path[i].y); started=true; }
-        else ctx.lineTo(path[i].x, path[i].y);
-      }
+      ctx.moveTo(gp.pts[0].x, gp.pts[0].y);
+      for(var i=1;i<=upTo;i++){ ctx.lineTo(gp.pts[i].x, gp.pts[i].y); }
+      ctx.lineTo(pos.x, pos.y);
       ctx.strokeStyle = color;
       ctx.globalAlpha = 0.28;
       ctx.lineWidth = 2;
