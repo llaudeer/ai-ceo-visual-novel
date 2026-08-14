@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>잔상 — 과거의 나를 피하라</title>
+<style>
+:root{
+  --bg:#0a0d13;
+  --bg-2:#10141d;
+  --panel:#12161f;
+  --line:#232a38;
+  --text:#e7e9ee;
+  --text-dim:#8890a0;
+  --player:#5be8ff;
+  --goal:#ffcf5c;
+  --danger:#ff5c7a;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);margin:0;height:100%}
+.wrap{
+  font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  color:var(--text);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  min-height:100%;
+  justify-content:center;
+  padding:1.5rem 1rem 2rem;
+  background:var(--bg);
+}
+h1{
+  font-size:13px;
+  font-weight:500;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+  color:var(--text-dim);
+  margin:0;
+}
+.stage{
+  position:relative;
+  border-radius:10px;
+  overflow:hidden;
+  border:0.5px solid var(--line);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 30px 60px -20px rgba(0,0,0,0.6);
+  background:var(--bg-2);
+  max-width:100%;
+}
+canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
+.hud{
+  position:absolute;top:0;left:0;right:0;
+  display:flex;justify-content:space-between;
+  padding:14px 18px;
+  font-size:12px;
+  letter-spacing:0.05em;
+  pointer-events:none;
+  text-transform:uppercase;
+}
+.hud .label{color:var(--text-dim);margin-right:6px}
+.hud .val{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.overlay{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:14px;
+  background:rgba(10,13,19,0.86);
+  text-align:center;
+  padding:24px;
+}
+.overlay.hidden{display:none}
+.overlay h2{
+  font-size:20px;font-weight:500;margin:0;
+  color:var(--text);
+}
+.overlay p{
+  font-size:13px;color:var(--text-dim);margin:0;
+  max-width:280px;line-height:1.6;
+}
+.btn{
+  margin-top:6px;
+  padding:9px 20px;
+  border-radius:6px;
+  border:0.5px solid var(--line);
+  background:var(--panel);
+  color:var(--text);
+  font-family:inherit;
+  font-size:12px;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.btn:hover{border-color:var(--player);color:var(--player)}
+.foot{
+  font-size:11px;color:var(--text-dim);
+  letter-spacing:0.03em;
+  max-width:520px;text-align:center;line-height:1.7;
+}
+.foot b{color:var(--text);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>잔상 — 과거의 나를 피하라</h1>
+  <div class="stage">
+    <canvas id="c" width="560" height="400"></canvas>
+    <div class="hud">
+      <div><span class="label">Lap</span><span class="val" id="lap">1</span></div>
+      <div><span class="label">Best</span><span class="val" id="best">0</span></div>
+      <div><span class="label">Time</span><span class="val" id="time">12.0</span></div>
+    </div>
+    <div class="overlay" id="overlay">
+      <h2>잔상</h2>
+      <p>화살표 또는 WASD로 이동해 금빛 코어를 모으세요.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.</p>
+      <button class="btn" id="start">시작</button>
+    </div>
+  </div>
+  <p class="foot"><b>컨셉 프로토타입</b> — 실제 빌드에서는 사운드, 파티클, 정적 장애물, 로컬 하이스코어가 추가됩니다.</p>
+</div>
+<script>
+(function(){
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  var LAP_MS = 12000;
+  var PLAYER_R = 7;
+  var GOAL_R = 10;
+  var GHOST_R = 7;
+
+  var keys = {};
+  window.addEventListener('keydown', function(e){
+    keys[e.key.toLowerCase()] = true;
+    if(['arrowup','arrowdown','arrowleft','arrowright',' '].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+  });
+  window.addEventListener('keyup', function(e){ keys[e.key.toLowerCase()] = false; });
+
+  var state = {
+    running:false,
+    lap:1,
+    best:0,
+    lapStart:0,
+    px: W/2, py: H-40, vx:0, vy:0,
+    path: [],
+    ghosts: [],
+    goal: null,
+    shake:0,
+    particles: []
+  };
+
+  function randGoal(){
+    return { x: 60 + Math.random()*(W-120), y: 50 + Math.random()*(H-160) };
+  }
+
+  var ghostPalette = ['#8b7bff','#c17bff','#7b5bff','#5b3fbf','#3a2a80'];
+
+  function resetRun(){
+    state.lap = 1;
+    state.ghosts = [];
+    startLap();
+  }
+
+  function startLap(){
+    state.lapStart = performance.now();
+    state.px = W/2; state.py = H-40; state.vx=0; state.vy=0;
+    state.path = [];
+    state.goal = randGoal();
+    document.getElementById('lap').textContent = state.lap;
+  }
+
+  function burst(x,y,color,n){
+    for(var i=0;i<n;i++){
+      var a = Math.random()*Math.PI*2, sp = 0.6+Math.random()*2.2;
+      state.particles.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,color:color});
+    }
+  }
+
+  function fail(){
+    state.shake = 14;
+    burst(state.px, state.py, '#ff5c7a', 26);
+    if(state.lap-1 > state.best){ state.best = state.lap-1; document.getElementById('best').textContent = state.best; }
+    setTimeout(resetRun, 420);
+    state.running = 'stunned';
+    setTimeout(function(){ state.running = true; }, 420);
+  }
+
+  function completeGoal(){
+    burst(state.goal.x, state.goal.y, '#ffcf5c', 22);
+    state.ghosts.unshift(state.path.slice());
+    if(state.ghosts.length > 5) state.ghosts.pop();
+    state.lap += 1;
+    startLap();
+  }
+
+  function timeoutLap(){
+    state.ghosts.unshift(state.path.slice());
+    if(state.ghosts.length > 5) state.ghosts.pop();
+    state.lap += 1;
+    startLap();
+  }
+
+  function dist(x1,y1,x2,y2){ return Math.hypot(x1-x2,y1-y2); }
+
+  function tick(){
+    requestAnimationFrame(tick);
+    if(!state.running) return;
+
+    var now = performance.now();
+    var elapsed = now - state.lapStart;
+    var t = Math.min(elapsed, LAP_MS);
+    document.getElementById('time').textContent = ((LAP_MS - t)/1000).toFixed(1);
+
+    if(state.running === true){
+      var speed = 3.1;
+      var ax=0, ay=0;
+      if(keys['arrowleft']||keys['a']) ax -= 1;
+      if(keys['arrowright']||keys['d']) ax += 1;
+      if(keys['arrowup']||keys['w']) ay -= 1;
+      if(keys['arrowdown']||keys['s']) ay += 1;
+      var len = Math.hypot(ax,ay) || 1;
+      state.px += (ax/len)*speed;
+      state.py += (ay/len)*speed;
+      state.px = Math.max(PLAYER_R, Math.min(W-PLAYER_R, state.px));
+      state.py = Math.max(PLAYER_R, Math.min(H-PLAYER_R, state.py));
+      state.path.push({t:elapsed, x:state.px, y:state.py});
+
+      if(elapsed > 550){
+        for(var gi=0; gi<state.ghosts.length; gi++){
+          var gp = ghostPosAt(state.ghosts[gi], elapsed);
+          if(gp && dist(state.px,state.py,gp.x,gp.y) < PLAYER_R+GHOST_R-2){
+            fail();
+            break;
+          }
+        }
+      }
+
+      if(state.goal && dist(state.px,state.py,state.goal.x,state.goal.y) < PLAYER_R+GOAL_R){
+        completeGoal();
+      } else if(elapsed >= LAP_MS){
+        timeoutLap();
+      }
+    }
+
+    for(var i=state.particles.length-1;i>=0;i--){
+      var p = state.particles[i];
+      p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94; p.life-=0.035;
+      if(p.life<=0) state.particles.splice(i,1);
+    }
+    if(state.shake>0) state.shake *= 0.85;
+
+    draw(elapsed);
+  }
+
+  function ghostPosAt(path, elapsed){
+    if(path.length===0) return null;
+    if(elapsed <= path[0].t) return path[0];
+    if(elapsed >= path[path.length-1].t) return path[path.length-1];
+    for(var i=1;i<path.length;i++){
+      if(path[i].t >= elapsed){
+        var a=path[i-1], b=path[i];
+        var f = (elapsed-a.t)/((b.t-a.t)||1);
+        return {x:a.x+(b.x-a.x)*f, y:a.y+(b.y-a.y)*f};
+      }
+    }
+    return path[path.length-1];
+  }
+
+  function draw(elapsed){
+    ctx.save();
+    var sx = (Math.random()-0.5)*state.shake, sy=(Math.random()-0.5)*state.shake;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#10141d';
+    ctx.fillRect(0,0,W,H);
+
+    ctx.translate(sx,sy);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    for(var gx=0; gx<W; gx+=28){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
+    for(var gy=0; gy<H; gy+=28){ ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+    for(var gi=state.ghosts.length-1; gi>=0; gi--){
+      var path = state.ghosts[gi];
+      var color = ghostPalette[Math.min(gi, ghostPalette.length-1)];
+      var pos = ghostPosAt(path, elapsed);
+      if(!pos) continue;
+      ctx.beginPath();
+      var started=false;
+      for(var i=0;i<path.length;i++){
+        if(path[i].t > elapsed) break;
+        if(!started){ ctx.moveTo(path[i].x, path[i].y); started=true; }
+        else ctx.lineTo(path[i].x, path[i].y);
+      }
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.beginPath();
+      ctx.arc(pos.x,pos.y,GHOST_R,0,Math.PI*2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.9;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    if(state.goal){
+      var pulse = 1 + Math.sin(performance.now()/220)*0.12;
+      ctx.beginPath();
+      ctx.arc(state.goal.x, state.goal.y, GOAL_R*pulse, 0, Math.PI*2);
+      ctx.fillStyle = '#ffcf5c';
+      ctx.shadowColor = 'rgba(255,207,92,0.7)';
+      ctx.shadowBlur = 18;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    if(elapsed < 550){
+      ctx.beginPath();
+      ctx.arc(state.px, state.py, PLAYER_R + 5 + Math.sin(performance.now()/60)*1.5, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(91,232,255,0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(state.px, state.py, PLAYER_R, 0, Math.PI*2);
+    ctx.fillStyle = '#5be8ff';
+    ctx.shadowColor = 'rgba(91,232,255,0.75)';
+    ctx.shadowBlur = 16;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    for(var pi=0;pi<state.particles.length;pi++){
+      var pt = state.particles[pi];
+      ctx.beginPath();
+      ctx.arc(pt.x,pt.y,2.4,0,Math.PI*2);
+      ctx.fillStyle = pt.color;
+      ctx.globalAlpha = Math.max(pt.life,0);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
+
+  document.getElementById('start').addEventListener('click', function(){
+    document.getElementById('overlay').classList.add('hidden');
+    state.running = true;
+    resetRun();
+  });
+
+  draw(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
