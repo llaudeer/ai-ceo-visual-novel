@@ -307,6 +307,39 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     osc.connect(gain); gain.connect(audioCtx.destination);
     osc.start(t0); osc.stop(t0+dur+0.02);
   }
+
+  // 조용한 배경음(드론 패드). 외부 파일 없이 오실레이터 3개로 화음을 깔고
+  // 아주 느린 LFO로 음량을 살짝 출렁이게 해서 정적이지 않게 만든다.
+  var ambientStarted = false;
+  function startAmbient(){
+    if(ambientStarted || !audioCtx) return;
+    ambientStarted = true;
+    var freqs = [110, 130.81, 164.81];
+    var master = audioCtx.createGain();
+    master.gain.setValueAtTime(0, audioCtx.currentTime);
+    master.gain.linearRampToValueAtTime(0.045, audioCtx.currentTime + 3);
+    master.connect(audioCtx.destination);
+
+    freqs.forEach(function(f, i){
+      var osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, audioCtx.currentTime);
+      var voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = i === 0 ? 0.5 : 0.32;
+      osc.connect(voiceGain); voiceGain.connect(master);
+      osc.start();
+    });
+
+    var lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.06;
+    var lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 0.018;
+    lfo.connect(lfoGain);
+    lfoGain.connect(master.gain);
+    lfo.start();
+  }
+
   function playStart(){ beep(440,0.08,'sine',0,0.12); }
   function playCollect(){ beep(660,0.09,'sine',0,0.18); beep(990,0.12,'sine',0.06,0.15); }
   function playFail(){ beep(180,0.25,'sawtooth',0,0.2); beep(90,0.3,'square',0.05,0.15); }
@@ -409,7 +442,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var MAGNET_KEY = 'zansang_magnetLevel';
   var MAGNET_MAX_LEVEL = 3;
   var MAGNET_RADIUS = [0, 40, 70, 100];
-  var MAGNET_COST = [0, 3000, 6000, 300000];
+  var MAGNET_COST = [0, 300000, 300000, 300000];
   var MAGNET_PULL_PER_MS = 0.15;
   var magnetLevel = parseInt(localStorage.getItem(MAGNET_KEY) || '0', 10) || 0;
   if(magnetLevel < 0 || magnetLevel > MAGNET_MAX_LEVEL) magnetLevel = Math.min(Math.max(magnetLevel,0), MAGNET_MAX_LEVEL);
@@ -1002,6 +1035,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   document.getElementById('start').addEventListener('click', function(){
     ensureAudio();
+    startAmbient();
     playStart();
     document.getElementById('overlay').classList.add('hidden');
     state.running = true;
@@ -1010,6 +1044,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   document.getElementById('restart').addEventListener('click', function(){
     ensureAudio();
+    startAmbient();
     playStart();
     document.getElementById('gameover').classList.add('hidden');
     state.running = true;
