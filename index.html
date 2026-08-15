@@ -148,6 +148,19 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 .amulet.show{opacity:1;transform:translateY(-50%) scale(1)}
 .amulet .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#7cf7c4}
 .amulet .cv{font-size:20px;font-weight:500;color:#bffbe0;font-variant-numeric:tabular-nums}
+.milestone{
+  position:absolute;left:50%;top:36%;
+  transform:translate(-50%,-50%) scale(0.85);
+  padding:10px 22px;border-radius:8px;
+  background:rgba(255,207,92,0.12);
+  border:0.5px solid rgba(255,207,92,0.5);
+  color:#ffe6a8;
+  font-size:16px;letter-spacing:0.06em;
+  white-space:nowrap;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.35s ease,transform 0.35s ease;
+}
+.milestone.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 </style>
 </head>
 <body>
@@ -189,6 +202,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <div class="shopGrid">
         <button class="shopTile" id="tileSpeed">속도</button>
         <button class="shopTile" id="tileAmulet">부적</button>
+        <button class="shopTile" id="tileMagnet">자석</button>
       </div>
       <button class="btn" id="shopClose">닫기</button>
     </div>
@@ -218,6 +232,19 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <button class="btn" id="amuletBack">뒤로</button>
       </div>
     </div>
+    <div class="overlay hidden" id="shopMagnet">
+      <h2>자석</h2>
+      <p>영구 업그레이드 — 근처 미니 픽업을 자동으로 끌어당깁니다.</p>
+      <div class="stats">
+        <div class="stat"><span>레벨</span><span id="magnetLevel">0</span></div>
+        <div class="stat"><span>반경</span><span id="magnetRadius">0px</span></div>
+        <div class="stat"><span>보유 코인</span><span id="magnetCoins">0</span></div>
+      </div>
+      <div class="btnRow">
+        <button class="btn" id="magnetBuy">구매</button>
+        <button class="btn" id="magnetBack">뒤로</button>
+      </div>
+    </div>
     <div class="combo" id="combo">
       <span class="cl">연속</span>
       <span class="cv" id="comboVal">3</span>
@@ -226,8 +253,11 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <span class="cl">부적</span>
       <span class="cv" id="amuletVal">0</span>
     </div>
+    <div class="milestone" id="milestone">
+      <span id="milestoneText">10랩 돌파!</span>
+    </div>
   </div>
-  <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드 업그레이드와 부적을 살 수 있습니다. 다음으로는 모바일 터치 조작이 추가될 예정입니다.</p>
+  <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드·자석 업그레이드와 부적을 살 수 있습니다.</p>
 </div>
 <script>
 (function(){
@@ -287,6 +317,21 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function playReveal(){ beep(880,0.1,'sine',0,0.15); beep(1320,0.14,'sine',0.08,0.12); }
   function playPurchase(){ beep(660,0.07,'sine',0,0.15); beep(880,0.07,'sine',0.05,0.15); beep(1100,0.1,'sine',0.1,0.14); }
   function playAmuletSave(){ beep(700,0.08,'sine',0,0.16); beep(1050,0.1,'sine',0.06,0.14); beep(1400,0.12,'sine',0.12,0.12); }
+  function playMilestone(){ beep(660,0.08,'sine',0,0.15); beep(880,0.08,'sine',0.07,0.15); beep(1320,0.16,'sine',0.14,0.14); }
+
+  // 10, 25, 그리고 50부터는 25랩마다 마일스톤 배지를 잠깐 띄운다.
+  function isMilestone(lap){
+    return lap === 10 || lap === 25 || (lap >= 50 && lap % 25 === 0);
+  }
+  var milestoneTimer = null;
+  function showMilestone(lap){
+    playMilestone();
+    var el = document.getElementById('milestone');
+    document.getElementById('milestoneText').textContent = lap + '랩 돌파!';
+    el.classList.add('show');
+    clearTimeout(milestoneTimer);
+    milestoneTimer = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+  }
 
   // 상점 화폐: 코어(500), 미니 픽업(100), 파워업(100), 니어미스(50),
   // 논스톱 콤보(3 이상부터 콤보당 50)로 쌓이고 새로고침해도 유지된다.
@@ -358,6 +403,30 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     burst(px, py, '#ffd76a', 24);
     playAmuletSave();
     return true;
+  }
+
+  // 영구 자석 업그레이드. 반경 안의 미니 픽업을 매 프레임 끌어당긴다.
+  var MAGNET_KEY = 'zansang_magnetLevel';
+  var MAGNET_MAX_LEVEL = 3;
+  var MAGNET_RADIUS = [0, 40, 70, 100];
+  var MAGNET_COST = [0, 3000, 6000, 12000];
+  var MAGNET_PULL_PER_MS = 0.15;
+  var magnetLevel = parseInt(localStorage.getItem(MAGNET_KEY) || '0', 10) || 0;
+  if(magnetLevel < 0 || magnetLevel > MAGNET_MAX_LEVEL) magnetLevel = Math.min(Math.max(magnetLevel,0), MAGNET_MAX_LEVEL);
+
+  function updateMagnetShopUI(){
+    document.getElementById('magnetLevel').textContent = magnetLevel + ' / ' + MAGNET_MAX_LEVEL;
+    document.getElementById('magnetRadius').textContent = MAGNET_RADIUS[magnetLevel] + 'px';
+    document.getElementById('magnetCoins').textContent = totalCoins;
+    var buyBtn = document.getElementById('magnetBuy');
+    if(magnetLevel >= MAGNET_MAX_LEVEL){
+      buyBtn.textContent = '최대 레벨 달성';
+      buyBtn.disabled = true;
+    } else {
+      var cost = MAGNET_COST[magnetLevel+1];
+      buyBtn.textContent = '다음 레벨 구매 — ' + cost + '코인 (' + MAGNET_RADIUS[magnetLevel+1] + 'px)';
+      buyBtn.disabled = totalCoins < cost;
+    }
   }
 
   var keys = {};
@@ -573,6 +642,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     state.moveStarted = false;
     state.running = 'transition';
     document.getElementById('lap').textContent = state.lap;
+    if(isMilestone(state.lap)) showMilestone(state.lap);
     setTimeout(function(){
       startLap();
       state.running = true;
@@ -684,6 +754,20 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       if(!blockedX) state.px = tryX;
       if(!blockedY) state.py = tryY;
       state.path.push({t:elapsed, x:state.px, y:state.py});
+
+      var magnetR = MAGNET_RADIUS[magnetLevel];
+      if(magnetR > 0){
+        for(var mgi=0; mgi<state.minis.length; mgi++){
+          var mnMag = state.minis[mgi];
+          if(mnMag.taken) continue;
+          var md = dist(state.px,state.py,mnMag.x,mnMag.y);
+          if(md < magnetR && md > 0.01){
+            var pull = Math.min(MAGNET_PULL_PER_MS*dt, md);
+            mnMag.x += (state.px-mnMag.x)/md*pull;
+            mnMag.y += (state.py-mnMag.y)/md*pull;
+          }
+        }
+      }
 
       for(var mi=0; mi<state.minis.length; mi++){
         var mn = state.minis[mi];
@@ -985,12 +1069,33 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     updateAmuletShopUI();
     updateAmuletBadge();
   });
+  document.getElementById('tileMagnet').addEventListener('click', function(){
+    updateMagnetShopUI();
+    document.getElementById('shop').classList.add('hidden');
+    document.getElementById('shopMagnet').classList.remove('hidden');
+  });
+  document.getElementById('magnetBack').addEventListener('click', function(){
+    document.getElementById('shopMainCoins').textContent = totalCoins;
+    document.getElementById('shopMagnet').classList.add('hidden');
+    document.getElementById('shop').classList.remove('hidden');
+  });
+  document.getElementById('magnetBuy').addEventListener('click', function(){
+    if(magnetLevel >= MAGNET_MAX_LEVEL) return;
+    var cost = MAGNET_COST[magnetLevel+1];
+    if(totalCoins < cost) return;
+    addCoins(-cost);
+    magnetLevel += 1;
+    localStorage.setItem(MAGNET_KEY, String(magnetLevel));
+    playPurchase();
+    updateMagnetShopUI();
+  });
 
-  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적 저장값을 전부 지우고 새로고침한다.
+  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적·자석 저장값을 전부 지우고 새로고침한다.
   document.getElementById('resetAll').addEventListener('click', function(){
     localStorage.removeItem(COIN_KEY);
     localStorage.removeItem(SPEED_KEY);
     localStorage.removeItem(AMULET_KEY);
+    localStorage.removeItem(MAGNET_KEY);
     location.reload();
   });
 
