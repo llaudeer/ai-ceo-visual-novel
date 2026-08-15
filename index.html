@@ -135,6 +135,19 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 .combo.show{opacity:1;transform:translateY(-50%) scale(1)}
 .combo .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--goal)}
 .combo .cv{font-size:20px;font-weight:500;color:#ffe6a8;font-variant-numeric:tabular-nums}
+.amulet{
+  position:absolute;left:14px;top:50%;
+  transform:translateY(-50%) scale(0.85);
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:8px 12px;border-radius:8px;
+  background:rgba(124,247,196,0.1);
+  border:0.5px solid rgba(124,247,196,0.4);
+  opacity:0;transition:opacity 0.2s ease,transform 0.2s ease;
+  pointer-events:none;
+}
+.amulet.show{opacity:1;transform:translateY(-50%) scale(1)}
+.amulet .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#7cf7c4}
+.amulet .cv{font-size:20px;font-weight:500;color:#bffbe0;font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -175,6 +188,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <p>보유 코인 <span id="shopMainCoins">0</span></p>
       <div class="shopGrid">
         <button class="shopTile" id="tileSpeed">속도</button>
+        <button class="shopTile" id="tileAmulet">부적</button>
       </div>
       <button class="btn" id="shopClose">닫기</button>
     </div>
@@ -191,12 +205,29 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <button class="btn" id="shopSpeedBack">뒤로</button>
       </div>
     </div>
+    <div class="overlay hidden" id="shopAmulet">
+      <h2>부적</h2>
+      <p>죽을 뻔한 순간(유령 충돌 또는 시간 초과) 한 번을 무효화합니다.<br>소모품이라 쓰면 사라지고, 여러 개 들고 시작할 수 있어요.</p>
+      <div class="stats">
+        <div class="stat"><span>보유</span><span id="amuletOwned">0</span></div>
+        <div class="stat"><span>가격</span><span id="amuletPrice">1500</span></div>
+        <div class="stat"><span>보유 코인</span><span id="amuletCoins">0</span></div>
+      </div>
+      <div class="btnRow">
+        <button class="btn" id="amuletBuy">구매</button>
+        <button class="btn" id="amuletBack">뒤로</button>
+      </div>
+    </div>
     <div class="combo" id="combo">
       <span class="cl">연속</span>
       <span class="cv" id="comboVal">3</span>
     </div>
+    <div class="amulet" id="amuletBadge">
+      <span class="cl">부적</span>
+      <span class="cv" id="amuletVal">0</span>
+    </div>
   </div>
-  <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드 업그레이드를 살 수 있습니다. 다음으로는 모바일 터치 조작이 추가될 예정입니다.</p>
+  <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드 업그레이드와 부적을 살 수 있습니다. 다음으로는 모바일 터치 조작이 추가될 예정입니다.</p>
 </div>
 <script>
 (function(){
@@ -255,6 +286,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   function playDebuff(){ beep(420,0.08,'square',0,0.12); beep(260,0.1,'square',0.05,0.12); }
   function playReveal(){ beep(880,0.1,'sine',0,0.15); beep(1320,0.14,'sine',0.08,0.12); }
   function playPurchase(){ beep(660,0.07,'sine',0,0.15); beep(880,0.07,'sine',0.05,0.15); beep(1100,0.1,'sine',0.1,0.14); }
+  function playAmuletSave(){ beep(700,0.08,'sine',0,0.16); beep(1050,0.1,'sine',0.06,0.14); beep(1400,0.12,'sine',0.12,0.12); }
 
   // 상점 화폐: 코어(500), 미니 픽업(100), 파워업(100), 니어미스(50),
   // 논스톱 콤보(3 이상부터 콤보당 50)로 쌓이고 새로고침해도 유지된다.
@@ -295,6 +327,39 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     }
   }
 
+  // 소모품 부적. 죽을 뻔한 순간(유령 충돌·시간 초과) 한 번을 무효화하고 사라진다.
+  var AMULET_KEY = 'zansang_amulets';
+  var AMULET_PRICE = 1500;
+  var amuletCount = parseInt(localStorage.getItem(AMULET_KEY) || '0', 10) || 0;
+  if(amuletCount < 0) amuletCount = 0;
+
+  function updateAmuletBadge(){
+    var el = document.getElementById('amuletBadge');
+    if(amuletCount > 0){
+      document.getElementById('amuletVal').textContent = amuletCount;
+      el.classList.add('show');
+    } else {
+      el.classList.remove('show');
+    }
+  }
+
+  function updateAmuletShopUI(){
+    document.getElementById('amuletOwned').textContent = amuletCount;
+    document.getElementById('amuletPrice').textContent = AMULET_PRICE;
+    document.getElementById('amuletCoins').textContent = totalCoins;
+    document.getElementById('amuletBuy').disabled = totalCoins < AMULET_PRICE;
+  }
+
+  function useAmulet(px, py){
+    if(amuletCount <= 0) return false;
+    amuletCount -= 1;
+    localStorage.setItem(AMULET_KEY, String(amuletCount));
+    updateAmuletBadge();
+    burst(px, py, '#ffd76a', 24);
+    playAmuletSave();
+    return true;
+  }
+
   var keys = {};
   window.addEventListener('keydown', function(e){
     keys[e.key.toLowerCase()] = true;
@@ -322,6 +387,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     slowUntil: 0,
     reverseUntil: 0,
     bonusMs: 0,
+    amuletInvulnUntil: 0,
     shake:0,
     particles: []
   };
@@ -658,8 +724,14 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
           if(!ghostPos) continue;
           var gd = dist(state.px,state.py,ghostPos.x,ghostPos.y);
           if(gd < PLAYER_R+GHOST_R-5){
-            fail();
-            break;
+            if(now < state.amuletInvulnUntil){
+              // 방금 부적으로 살아난 직후의 짧은 무적 구간 — 재판정 무시
+            } else if(useAmulet(state.px, state.py)){
+              state.amuletInvulnUntil = now + 1200;
+            } else {
+              fail();
+              break;
+            }
           } else if(gd < NEAR_MISS_R){
             if(!gpObj.grazing){
               gpObj.grazing = true;
@@ -676,7 +748,11 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       if(state.goal && dist(state.px,state.py,state.goal.x,state.goal.y) < PLAYER_R+GOAL_R){
         completeGoal();
       } else if(elapsed >= lapLimit){
-        fail('timeout');
+        if(useAmulet(state.px, state.py)){
+          state.bonusMs += 3000;
+        } else {
+          fail('timeout');
+        }
       }
     }
 
@@ -890,15 +966,36 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     playPurchase();
     updateShopUI();
   });
+  document.getElementById('tileAmulet').addEventListener('click', function(){
+    updateAmuletShopUI();
+    document.getElementById('shop').classList.add('hidden');
+    document.getElementById('shopAmulet').classList.remove('hidden');
+  });
+  document.getElementById('amuletBack').addEventListener('click', function(){
+    document.getElementById('shopMainCoins').textContent = totalCoins;
+    document.getElementById('shopAmulet').classList.add('hidden');
+    document.getElementById('shop').classList.remove('hidden');
+  });
+  document.getElementById('amuletBuy').addEventListener('click', function(){
+    if(totalCoins < AMULET_PRICE) return;
+    addCoins(-AMULET_PRICE);
+    amuletCount += 1;
+    localStorage.setItem(AMULET_KEY, String(amuletCount));
+    playPurchase();
+    updateAmuletShopUI();
+    updateAmuletBadge();
+  });
 
-  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨 저장값을 전부 지우고 새로고침한다.
+  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적 저장값을 전부 지우고 새로고침한다.
   document.getElementById('resetAll').addEventListener('click', function(){
     localStorage.removeItem(COIN_KEY);
     localStorage.removeItem(SPEED_KEY);
+    localStorage.removeItem(AMULET_KEY);
     location.reload();
   });
 
   document.getElementById('coins').textContent = totalCoins;
+  updateAmuletBadge();
   draw(0);
   requestAnimationFrame(tick);
 })();
