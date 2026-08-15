@@ -409,7 +409,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var MAGNET_KEY = 'zansang_magnetLevel';
   var MAGNET_MAX_LEVEL = 3;
   var MAGNET_RADIUS = [0, 40, 70, 100];
-  var MAGNET_COST = [0, 3000, 6000, 12000];
+  var MAGNET_COST = [0, 3000, 6000, 300000];
   var MAGNET_PULL_PER_MS = 0.15;
   var magnetLevel = parseInt(localStorage.getItem(MAGNET_KEY) || '0', 10) || 0;
   if(magnetLevel < 0 || magnetLevel > MAGNET_MAX_LEVEL) magnetLevel = Math.min(Math.max(magnetLevel,0), MAGNET_MAX_LEVEL);
