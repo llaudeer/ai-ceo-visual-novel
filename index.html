@@ -208,6 +208,11 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var GOAL_R = 11;
   var GHOST_R = 7;
   var PLAYER_SPEED = 3.1;
+  // 3.1은 "60fps에서 프레임당 픽셀" 기준 값이라, ms당 속도로 환산해 쓴다.
+  // 유령처럼 실제 경과 시간 기준으로 움직여야 화면 주사율(60Hz/120Hz 등)과
+  // 무관하게 항상 같은 속도가 나온다.
+  var PLAYER_SPEED_PER_MS = PLAYER_SPEED * 60 / 1000;
+  var lastMoveFrame = 0;
 
   // 랩 구간별로 유령 속도가 계단식으로 올라간다: 1~5랩 82%, 6~10랩 88%,
   // 11~20랩 93%, 21랩부터는 95%로 고정.
@@ -580,6 +585,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       if(!state.moveStarted && (ax!==0 || ay!==0)){
         state.moveStarted = true;
         state.moveStart = now;
+        lastMoveFrame = now;
       }
     }
 
@@ -590,7 +596,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     if(state.running === true && state.moveStarted){
       if(ax===0 && ay===0) state.pausedThisLap = true;
-      var baseSpeed = PLAYER_SPEED * playerSpeedMultiplier();
+      var dt = lastMoveFrame ? Math.min(now - lastMoveFrame, 50) : 16.667;
+      lastMoveFrame = now;
+      var baseSpeed = PLAYER_SPEED_PER_MS * playerSpeedMultiplier() * dt;
       var speed = baseSpeed;
       if(now < state.boostUntil) speed = baseSpeed*BOOST_MULT;
       else if(now < state.slowUntil) speed = baseSpeed*SLOW_MULT;
