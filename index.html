@@ -59,6 +59,14 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 }
 .hud .label{color:var(--text-dim);margin-right:6px}
 .hud .val{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.muteBtn{
+  pointer-events:auto;
+  background:none;border:none;
+  color:var(--text-dim);
+  font-size:14px;line-height:1;
+  padding:0;cursor:pointer;
+}
+.muteBtn:hover{color:var(--text)}
 .overlay{
   position:absolute;inset:0;
   display:flex;flex-direction:column;
@@ -116,6 +124,21 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   cursor:pointer;
 }
 .shopTile:hover{border-color:var(--player);color:var(--player)}
+.skinGrid{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:420px;margin:4px 0 6px}
+.skinSwatch{
+  width:76px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:9px 6px;border-radius:8px;
+  border:0.5px solid var(--line);
+  background:var(--panel);
+  font-family:inherit;
+  cursor:pointer;
+}
+.skinSwatch.equipped{border-color:var(--player)}
+.skinSwatch:hover{border-color:var(--player)}
+.skinDot{width:22px;height:22px;border-radius:50%}
+.skinLabel{font-size:10px;color:var(--text)}
+.skinPrice{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
 .foot{
   font-size:11px;color:var(--text-dim);
   letter-spacing:0.03em;
@@ -173,6 +196,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <div><span class="label">Best</span><span class="val" id="best">0</span></div>
       <div><span class="label">Coin</span><span class="val" id="coins">0</span></div>
       <div><span class="label">Time</span><span class="val" id="time">9.0</span></div>
+      <button class="muteBtn" id="muteBtn" title="음소거">🔊</button>
     </div>
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
@@ -203,6 +227,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <button class="shopTile" id="tileSpeed">속도</button>
         <button class="shopTile" id="tileAmulet">부적</button>
         <button class="shopTile" id="tileMagnet">자석</button>
+        <button class="shopTile" id="tileSkin">스킨</button>
       </div>
       <button class="btn" id="shopClose">닫기</button>
     </div>
@@ -243,6 +268,14 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       <div class="btnRow">
         <button class="btn" id="magnetBuy">구매</button>
         <button class="btn" id="magnetBack">뒤로</button>
+      </div>
+    </div>
+    <div class="overlay hidden" id="shopSkin">
+      <h2>스킨</h2>
+      <p>코인으로 색상을 잠금 해제하고 장착할 수 있어요. 게임 플레이에는 영향 없습니다.</p>
+      <div class="skinGrid" id="skinGrid"></div>
+      <div class="btnRow">
+        <button class="btn" id="skinBack">뒤로</button>
       </div>
     </div>
     <div class="combo" id="combo">
@@ -287,15 +320,26 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   var audioCtx = null;
+  var MUTE_KEY = 'zansang_muted';
+  var muted = localStorage.getItem(MUTE_KEY) === '1';
   function ensureAudio(){
     if(!audioCtx){
       var AC = window.AudioContext || window.webkitAudioContext;
       audioCtx = new AC();
     }
-    if(audioCtx.state === 'suspended') audioCtx.resume();
+    if(audioCtx.state === 'suspended' && !document.hidden) audioCtx.resume();
+  }
+  function applyMuteUI(){
+    document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+  }
+  function setMuted(m){
+    muted = m;
+    localStorage.setItem(MUTE_KEY, m ? '1' : '0');
+    if(ambientMaster) ambientMaster.gain.value = muted ? 0 : 0.9;
+    applyMuteUI();
   }
   function beep(freq, dur, type, delay, vol){
-    if(!audioCtx) return;
+    if(!audioCtx || muted) return;
     var t0 = audioCtx.currentTime + (delay||0);
     var osc = audioCtx.createOscillator();
     var gain = audioCtx.createGain();
@@ -435,7 +479,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(ambientStarted || !audioCtx) return;
     ambientStarted = true;
     ambientMaster = audioCtx.createGain();
-    ambientMaster.gain.value = 0.9;
+    ambientMaster.gain.value = muted ? 0 : 0.9;
     ambientMaster.connect(audioCtx.destination);
     scheduleAmbientLoop();
   }
@@ -569,6 +613,59 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       buyBtn.textContent = '다음 레벨 구매 — ' + cost + '코인 (' + MAGNET_RADIUS[magnetLevel+1] + 'px)';
       buyBtn.disabled = totalCoins < cost;
     }
+  }
+
+  // 코스메틱 스킨. 게임플레이에는 영향 없고 플레이어 색상만 바뀐다.
+  var SKINS = [
+    { id:'cyan',   name:'시안',   color:'#5be8ff', glow:'91,232,255', price:0 },
+    { id:'pink',   name:'핑크',   color:'#ff6fd8', glow:'255,111,216', price:2000 },
+    { id:'lime',   name:'라임',   color:'#9dff6f', glow:'157,255,111', price:2000 },
+    { id:'orange', name:'오렌지', color:'#ffab4a', glow:'255,171,74',  price:2000 },
+    { id:'purple', name:'퍼플',   color:'#b98bff', glow:'185,139,255', price:2000 }
+  ];
+  var SKIN_OWNED_KEY = 'zansang_skinsOwned';
+  var SKIN_EQUIPPED_KEY = 'zansang_skinEquipped';
+  var skinOwned = JSON.parse(localStorage.getItem(SKIN_OWNED_KEY) || '["cyan"]');
+  var skinEquipped = localStorage.getItem(SKIN_EQUIPPED_KEY) || 'cyan';
+
+  function currentSkin(){
+    for(var i=0;i<SKINS.length;i++){ if(SKINS[i].id === skinEquipped) return SKINS[i]; }
+    return SKINS[0];
+  }
+
+  function renderSkinShop(){
+    var grid = document.getElementById('skinGrid');
+    grid.innerHTML = '';
+    SKINS.forEach(function(s){
+      var owned = skinOwned.indexOf(s.id) !== -1;
+      var btn = document.createElement('button');
+      btn.className = 'skinSwatch' + (s.id === skinEquipped ? ' equipped' : '');
+      var dot = document.createElement('div');
+      dot.className = 'skinDot';
+      dot.style.background = s.color;
+      dot.style.boxShadow = '0 0 8px rgba(' + s.glow + ',0.8)';
+      var label = document.createElement('div');
+      label.className = 'skinLabel';
+      label.textContent = s.name;
+      var sub = document.createElement('div');
+      sub.className = 'skinPrice';
+      sub.textContent = !owned ? (s.price + '코인') : (s.id === skinEquipped ? '장착중' : '보유');
+      btn.appendChild(dot); btn.appendChild(label); btn.appendChild(sub);
+      btn.addEventListener('click', function(){
+        if(owned){
+          skinEquipped = s.id;
+          localStorage.setItem(SKIN_EQUIPPED_KEY, s.id);
+          renderSkinShop();
+        } else if(totalCoins >= s.price){
+          addCoins(-s.price);
+          skinOwned.push(s.id);
+          localStorage.setItem(SKIN_OWNED_KEY, JSON.stringify(skinOwned));
+          playPurchase();
+          renderSkinShop();
+        }
+      });
+      grid.appendChild(btn);
+    });
   }
 
   var keys = {};
@@ -1092,10 +1189,12 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.stroke();
     }
 
+    var skin = currentSkin();
+
     if(elapsed < 550){
       ctx.beginPath();
       ctx.arc(state.px, state.py, PLAYER_R + 5 + Math.sin(performance.now()/60)*1.5, 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(91,232,255,0.4)';
+      ctx.strokeStyle = 'rgba(' + skin.glow + ',0.4)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
@@ -1123,8 +1222,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     ctx.beginPath();
     ctx.arc(state.px, state.py, PLAYER_R, 0, Math.PI*2);
-    ctx.fillStyle = '#5be8ff';
-    ctx.shadowColor = 'rgba(91,232,255,0.75)';
+    ctx.fillStyle = skin.color;
+    ctx.shadowColor = 'rgba(' + skin.glow + ',0.75)';
     ctx.shadowBlur = 16;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -1233,18 +1332,35 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     playPurchase();
     updateMagnetShopUI();
   });
+  document.getElementById('tileSkin').addEventListener('click', function(){
+    renderSkinShop();
+    document.getElementById('shop').classList.add('hidden');
+    document.getElementById('shopSkin').classList.remove('hidden');
+  });
+  document.getElementById('skinBack').addEventListener('click', function(){
+    document.getElementById('shopMainCoins').textContent = totalCoins;
+    document.getElementById('shopSkin').classList.add('hidden');
+    document.getElementById('shop').classList.remove('hidden');
+  });
 
-  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적·자석 저장값을 전부 지우고 새로고침한다.
+  // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적·자석·스킨 저장값을 전부 지우고 새로고침한다.
   document.getElementById('resetAll').addEventListener('click', function(){
     localStorage.removeItem(COIN_KEY);
     localStorage.removeItem(SPEED_KEY);
     localStorage.removeItem(AMULET_KEY);
     localStorage.removeItem(MAGNET_KEY);
+    localStorage.removeItem(SKIN_OWNED_KEY);
+    localStorage.removeItem(SKIN_EQUIPPED_KEY);
     location.reload();
+  });
+
+  document.getElementById('muteBtn').addEventListener('click', function(){
+    setMuted(!muted);
   });
 
   document.getElementById('coins').textContent = totalCoins;
   updateAmuletBadge();
+  applyMuteUI();
   draw(0);
   requestAnimationFrame(tick);
 })();
