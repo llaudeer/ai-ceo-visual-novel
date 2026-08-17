@@ -38,6 +38,11 @@ h1{
   color:var(--text-dim);
   margin:0;
 }
+.stageRow{
+  display:flex;
+  align-items:stretch;
+  gap:14px;
+}
 .stage{
   position:relative;
   border-radius:10px;
@@ -48,13 +53,36 @@ h1{
   max-width:100%;
 }
 canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
+.sidePanel{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  width:120px;
+  flex-shrink:0;
+}
+.sideBox{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:10px 8px;border-radius:8px;
+  background:rgba(255,207,92,0.06);
+  border:0.5px solid rgba(255,207,92,0.25);
+  opacity:0;transform:scale(0.9);
+  transition:opacity 0.2s ease,transform 0.2s ease;
+}
+.sideBox.amuletBox{
+  background:rgba(124,247,196,0.06);
+  border-color:rgba(124,247,196,0.25);
+}
+.sideBox.show{opacity:1;transform:scale(1)}
+.sideBox .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--goal)}
+.sideBox.amuletBox .cl{color:#7cf7c4}
+.sideBox .cv{font-size:20px;font-weight:500;color:#ffe6a8;font-variant-numeric:tabular-nums}
+.sideBox.amuletBox .cv{color:#bffbe0}
 .hud{
-  position:absolute;top:0;left:0;right:0;
-  display:flex;justify-content:space-between;
-  padding:14px 18px;
+  display:flex;justify-content:space-between;align-items:center;
+  width:100%;
+  padding:0 4px 10px;
   font-size:12px;
   letter-spacing:0.05em;
-  pointer-events:none;
   text-transform:uppercase;
 }
 .hud .label{color:var(--text-dim);margin-right:6px}
@@ -145,32 +173,6 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   max-width:520px;text-align:center;line-height:1.7;
 }
 .foot b{color:var(--text);font-weight:500}
-.combo{
-  position:absolute;right:14px;top:50%;
-  transform:translateY(-50%) scale(0.85);
-  display:flex;flex-direction:column;align-items:center;gap:2px;
-  padding:8px 12px;border-radius:8px;
-  background:rgba(255,207,92,0.1);
-  border:0.5px solid rgba(255,207,92,0.4);
-  opacity:0;transition:opacity 0.2s ease,transform 0.2s ease;
-  pointer-events:none;
-}
-.combo.show{opacity:1;transform:translateY(-50%) scale(1)}
-.combo .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--goal)}
-.combo .cv{font-size:20px;font-weight:500;color:#ffe6a8;font-variant-numeric:tabular-nums}
-.amulet{
-  position:absolute;left:14px;top:50%;
-  transform:translateY(-50%) scale(0.85);
-  display:flex;flex-direction:column;align-items:center;gap:2px;
-  padding:8px 12px;border-radius:8px;
-  background:rgba(124,247,196,0.1);
-  border:0.5px solid rgba(124,247,196,0.4);
-  opacity:0;transition:opacity 0.2s ease,transform 0.2s ease;
-  pointer-events:none;
-}
-.amulet.show{opacity:1;transform:translateY(-50%) scale(1)}
-.amulet .cl{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#7cf7c4}
-.amulet .cv{font-size:20px;font-weight:500;color:#bffbe0;font-variant-numeric:tabular-nums}
 .milestone{
   position:absolute;left:50%;top:36%;
   transform:translate(-50%,-50%) scale(0.85);
@@ -189,15 +191,16 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 <body>
 <div class="wrap">
   <h1>잔상 — 과거의 나를 피하라</h1>
+  <div class="hud">
+    <div><span class="label">Lap</span><span class="val" id="lap">1</span></div>
+    <div><span class="label">Best</span><span class="val" id="best">0</span></div>
+    <div><span class="label">Coin</span><span class="val" id="coins">0</span></div>
+    <div><span class="label">Time</span><span class="val" id="time">9.0</span></div>
+    <button class="muteBtn" id="muteBtn" title="음소거">🔊</button>
+  </div>
+  <div class="stageRow">
   <div class="stage">
-    <canvas id="c" width="560" height="400"></canvas>
-    <div class="hud">
-      <div><span class="label">Lap</span><span class="val" id="lap">1</span></div>
-      <div><span class="label">Best</span><span class="val" id="best">0</span></div>
-      <div><span class="label">Coin</span><span class="val" id="coins">0</span></div>
-      <div><span class="label">Time</span><span class="val" id="time">9.0</span></div>
-      <button class="muteBtn" id="muteBtn" title="음소거">🔊</button>
-    </div>
+    <canvas id="c" width="900" height="640"></canvas>
     <div class="overlay" id="overlay">
       <h2>잔상</h2>
       <p>화살표 또는 WASD로 이동해 파란 점을 모두 모으면 금빛 코어가 나타납니다.<br>매 랩이 끝나면 방금 움직인 경로가 유령이 되어 다음 랩부터 장애물이 됩니다.<br>15랩부터는 고정된 벽도 하나씩 늘어납니다.<br>시간 초과 시 게임 오버! 회전하는 아이템은 가속/감속/방향반전 중 하나입니다.<br>유령을 스치거나 뭘 먹든 코인이 쌓입니다.</p>
@@ -228,6 +231,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <button class="shopTile" id="tileAmulet">부적</button>
         <button class="shopTile" id="tileMagnet">자석</button>
         <button class="shopTile" id="tileSkin">스킨</button>
+        <button class="shopTile" id="tileEffect">이펙트</button>
       </div>
       <button class="btn" id="shopClose">닫기</button>
     </div>
@@ -278,17 +282,28 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
         <button class="btn" id="skinBack">뒤로</button>
       </div>
     </div>
-    <div class="combo" id="combo">
-      <span class="cl">연속</span>
-      <span class="cv" id="comboVal">3</span>
-    </div>
-    <div class="amulet" id="amuletBadge">
-      <span class="cl">부적</span>
-      <span class="cv" id="amuletVal">0</span>
+    <div class="overlay hidden" id="shopEffect">
+      <h2>이펙트</h2>
+      <p>코인으로 이동경로(트레일) 색상을 잠금 해제하고 장착할 수 있어요. 게임 플레이에는 영향 없습니다.</p>
+      <div class="skinGrid" id="effectGrid"></div>
+      <div class="btnRow">
+        <button class="btn" id="effectBack">뒤로</button>
+      </div>
     </div>
     <div class="milestone" id="milestone">
       <span id="milestoneText">10랩 돌파!</span>
     </div>
+  </div>
+  <div class="sidePanel">
+    <div class="sideBox" id="combo">
+      <span class="cl">연속</span>
+      <span class="cv" id="comboVal">3</span>
+    </div>
+    <div class="sideBox amuletBox" id="amuletBadge">
+      <span class="cl">부적</span>
+      <span class="cv" id="amuletVal">0</span>
+    </div>
+  </div>
   </div>
   <p class="foot"><b>컨셉 프로토타입</b> — 코인으로 영구 스피드·자석 업그레이드와 부적을 살 수 있습니다.</p>
 </div>
@@ -308,15 +323,21 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var PLAYER_SPEED_PER_MS = PLAYER_SPEED * 60 / 1000;
   var lastMoveFrame = 0;
 
-  // 랩 구간별로 유령 속도가 계단식으로 올라간다: 1~5랩 82%, 6~10랩 88%,
-  // 11~20랩 93%, 21랩부터는 95%로 고정.
+  // 유령 속도를 랩에 따라 부드러운 지수 곡선으로 올린다. 1랩은 82%에서
+  // 시작해서 랩이 오를수록 완만하게 증가하다가, 고랩(약 40랩 이상)부터는
+  // 플레이어 속도의 99%에 거의 근접하도록 점근한다. 예전의 4단계 계단식
+  // (82/88/93/95%) 대신 매 랩마다 미세하게 달라지는 연속 곡선이라, 후반
+  // 랩일수록 유령이 플레이어에 거의 붙어서 따라오는 느낌을 준다.
+  var GHOST_SPEED_START = 0.82;
+  var GHOST_SPEED_CAP = 0.99;
+  var GHOST_SPEED_EASE = 12; // 값이 작을수록 초반에 빠르게 캡에 근접
+  function ghostSpeedFactor(lap){
+    var t = Math.max(0, lap - 1);
+    var factor = GHOST_SPEED_CAP - (GHOST_SPEED_CAP - GHOST_SPEED_START) * Math.exp(-t / GHOST_SPEED_EASE);
+    return Math.min(GHOST_SPEED_CAP, factor);
+  }
   function ghostSpeedPerMs(lap){
-    var factor;
-    if(lap <= 5) factor = 0.82;
-    else if(lap <= 10) factor = 0.88;
-    else if(lap <= 20) factor = 0.93;
-    else factor = 0.95;
-    return PLAYER_SPEED * factor * 60 / 1000;
+    return PLAYER_SPEED * ghostSpeedFactor(lap) * 60 / 1000;
   }
 
   var audioCtx = null;
@@ -621,7 +642,11 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     { id:'pink',   name:'핑크',   color:'#ff6fd8', glow:'255,111,216', price:2000 },
     { id:'lime',   name:'라임',   color:'#9dff6f', glow:'157,255,111', price:2000 },
     { id:'orange', name:'오렌지', color:'#ffab4a', glow:'255,171,74',  price:2000 },
-    { id:'purple', name:'퍼플',   color:'#b98bff', glow:'185,139,255', price:2000 }
+    { id:'purple', name:'퍼플',   color:'#b98bff', glow:'185,139,255', price:2000 },
+    { id:'gold',    name:'골드',    color:'#ffd700', glow:'255,215,0',   price:100000 },
+    { id:'ice',     name:'아이스',  color:'#9ff5ff', glow:'159,245,255', price:100000 },
+    { id:'crimson', name:'크림슨',  color:'#ff3b5c', glow:'255,59,92',   price:100000 },
+    { id:'voidsk',  name:'보이드',  color:'#6a4fff', glow:'106,79,255',  price:100000 }
   ];
   var SKIN_OWNED_KEY = 'zansang_skinsOwned';
   var SKIN_EQUIPPED_KEY = 'zansang_skinEquipped';
@@ -668,10 +693,67 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     });
   }
 
+  // 이동경로 이펙트(트레일). 게임플레이에는 영향 없고 이동 중 남는 잔상 선의
+  // 색/글로우만 바뀐다. 'none'은 기본값(무료, 트레일 없음).
+  var TRAILS = [
+    { id:'none',   name:'없음',   color:null,      price:0 },
+    { id:'neon',   name:'네온',   color:'#5be8ff', price:100000 },
+    { id:'ember',  name:'엠버',   color:'#ff8a5c', price:100000 },
+    { id:'aurora', name:'오로라', color:'#7cffb2', price:100000 },
+    { id:'voidtr', name:'보이드', color:'#b98bff', price:100000 }
+  ];
+  var TRAIL_OWNED_KEY = 'zansang_trailsOwned';
+  var TRAIL_EQUIPPED_KEY = 'zansang_trailEquipped';
+  var trailOwned = JSON.parse(localStorage.getItem(TRAIL_OWNED_KEY) || '["none"]');
+  var trailEquipped = localStorage.getItem(TRAIL_EQUIPPED_KEY) || 'none';
+
+  function currentTrail(){
+    for(var i=0;i<TRAILS.length;i++){ if(TRAILS[i].id === trailEquipped) return TRAILS[i]; }
+    return TRAILS[0];
+  }
+
+  function renderEffectShop(){
+    var grid = document.getElementById('effectGrid');
+    grid.innerHTML = '';
+    TRAILS.forEach(function(s){
+      var owned = trailOwned.indexOf(s.id) !== -1;
+      var btn = document.createElement('button');
+      btn.className = 'skinSwatch' + (s.id === trailEquipped ? ' equipped' : '');
+      var dot = document.createElement('div');
+      dot.className = 'skinDot';
+      dot.style.background = s.color || '#232a38';
+      dot.style.boxShadow = s.color ? ('0 0 8px ' + s.color) : 'none';
+      var label = document.createElement('div');
+      label.className = 'skinLabel';
+      label.textContent = s.name;
+      var sub = document.createElement('div');
+      sub.className = 'skinPrice';
+      sub.textContent = !owned ? (s.price + '코인') : (s.id === trailEquipped ? '장착중' : '보유');
+      btn.appendChild(dot); btn.appendChild(label); btn.appendChild(sub);
+      btn.addEventListener('click', function(){
+        if(owned){
+          trailEquipped = s.id;
+          localStorage.setItem(TRAIL_EQUIPPED_KEY, s.id);
+          renderEffectShop();
+        } else if(totalCoins >= s.price){
+          addCoins(-s.price);
+          trailOwned.push(s.id);
+          localStorage.setItem(TRAIL_OWNED_KEY, JSON.stringify(trailOwned));
+          playPurchase();
+          renderEffectShop();
+        }
+      });
+      grid.appendChild(btn);
+    });
+  }
+
   var keys = {};
   window.addEventListener('keydown', function(e){
     keys[e.key.toLowerCase()] = true;
     if(['arrowup','arrowdown','arrowleft','arrowright',' '].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+    if(e.key.toLowerCase() === 'r' && !document.getElementById('gameover').classList.contains('hidden')){
+      document.getElementById('restart').click();
+    }
   });
   window.addEventListener('keyup', function(e){ keys[e.key.toLowerCase()] = false; });
 
@@ -696,6 +778,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     reverseUntil: 0,
     bonusMs: 0,
     amuletInvulnUntil: 0,
+    nextSuddenAt: 0,
     shake:0,
     particles: []
   };
@@ -724,18 +807,40 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   // 15랩까지는 장애물 없이 유령 회피에만 집중하게 두고, 그 이후부터
-  // 한 랩에 하나씩(최대 6개) 늘려 난이도를 서서히 올린다.
+  // 한 랩에 하나씩 늘려 난이도를 서서히 올린다. 상한선(원래 6개)도 랩이
+  // 더 오르면(40랩부터 6랩마다 +1) 서서히 늘어나되 14개에서 멈춘다.
+  var OBSTACLE_BASE_CAP = 6;
+  var OBSTACLE_CAP_GROWTH_START_LAP = 40;
+  var OBSTACLE_CAP_GROWTH_STEP_LAPS = 6;
+  var OBSTACLE_MAX_CAP = 14;
+  function obstacleCapForLap(lap){
+    var extra = lap > OBSTACLE_CAP_GROWTH_START_LAP
+      ? Math.floor((lap - OBSTACLE_CAP_GROWTH_START_LAP) / OBSTACLE_CAP_GROWTH_STEP_LAPS)
+      : 0;
+    return Math.min(OBSTACLE_MAX_CAP, OBSTACLE_BASE_CAP + extra);
+  }
   function obstacleCountForLap(lap){
-    return Math.max(0, Math.min(6, lap - 14));
+    return Math.max(0, Math.min(obstacleCapForLap(lap), lap - 14));
   }
 
-  function randObstacles(count){
+  // 장애물 크기도 랩에 비례해 조금씩 커지되(20랩부터, 랩당 +1.2%),
+  // 최대 +60%에서 멈춰서 통로가 완전히 막히지 않도록 한다.
+  var OBSTACLE_SIZE_GROWTH_START_LAP = 20;
+  var OBSTACLE_SIZE_GROWTH_PER_LAP = 0.012;
+  var OBSTACLE_SIZE_MAX_MULT = 1.6;
+  function obstacleSizeMultForLap(lap){
+    var grownLaps = Math.max(0, lap - OBSTACLE_SIZE_GROWTH_START_LAP);
+    return Math.min(OBSTACLE_SIZE_MAX_MULT, 1 + grownLaps * OBSTACLE_SIZE_GROWTH_PER_LAP);
+  }
+
+  function randObstacles(count, lap){
+    var sizeMult = obstacleSizeMultForLap(lap || 1);
     var obs = [];
     var tries = 0;
     while(obs.length < count && tries < 300){
       tries++;
-      var w = 46 + Math.random()*54;
-      var h = 14 + Math.random()*12;
+      var w = (46 + Math.random()*54) * sizeMult;
+      var h = (14 + Math.random()*12) * sizeMult;
       if(Math.random() < 0.5){ var tmp=w; w=h; h=tmp; }
       var rect = {
         x: 24 + Math.random()*(W-48-w),
@@ -749,6 +854,51 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       obs.push(rect);
     }
     return obs;
+  }
+
+  // 특정 랩부터 화면에 "갑자기" 장애물이 튀어나온다. 플레이어/코어/미니
+  // 픽업/파워업/기존 장애물과 겹치지 않는 자리를 찾아 생성하고, 3초 뒤
+  // 자동으로 사라진다.
+  var SUDDEN_OBSTACLE_MIN_LAP = 25;
+  var SUDDEN_OBSTACLE_LIFE_MS = 3000;
+  var SUDDEN_OBSTACLE_MIN_GAP_MS = 2500;
+  var SUDDEN_OBSTACLE_MAX_GAP_MS = 4500;
+
+  function trySpawnSuddenObstacle(now){
+    var sizeMult = obstacleSizeMultForLap(state.lap);
+    var w = (40 + Math.random()*50) * sizeMult;
+    var h = (14 + Math.random()*12) * sizeMult;
+    if(Math.random() < 0.5){ var tmp=w; w=h; h=tmp; }
+    var tries = 0;
+    while(tries < 40){
+      tries++;
+      var rect = {
+        x: 24 + Math.random()*(W-48-w),
+        y: 24 + Math.random()*(H-48-h),
+        w: w, h: h,
+        sudden: true,
+        expireAt: now + SUDDEN_OBSTACLE_LIFE_MS
+      };
+      if(rectCircleOverlap(rect, state.px, state.py, PLAYER_R+30)) continue;
+      if(state.goal && rectCircleOverlap(rect, state.goal.x, state.goal.y, GOAL_R+16)) continue;
+      if(state.pendingGoal && rectCircleOverlap(rect, state.pendingGoal.x, state.pendingGoal.y, GOAL_R+16)) continue;
+      var badMini = false;
+      for(var mi=0; mi<state.minis.length; mi++){
+        var mn = state.minis[mi];
+        if(!mn.taken && rectCircleOverlap(rect, mn.x, mn.y, MINI_R+16)){ badMini = true; break; }
+      }
+      if(badMini) continue;
+      if(state.powerup && rectCircleOverlap(rect, state.powerup.x, state.powerup.y, POWERUP_R+16)) continue;
+      var overlaps = false;
+      for(var i=0;i<state.obstacles.length;i++){
+        if(rectsOverlap(rect, state.obstacles[i], 14)){ overlaps = true; break; }
+      }
+      if(overlaps) continue;
+      state.obstacles.push(rect);
+      burst(rect.x+rect.w/2, rect.y+rect.h/2, '#ff5c7a', 10);
+      return true;
+    }
+    return false;
   }
 
   function randGoal(obstacles){
@@ -820,6 +970,22 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   }
 
   var ghostPalette = ['#8b7bff','#c17bff','#7b5bff','#5b3fbf','#3a2a80'];
+  // 유령은 레벨(랩)당 최대 11개까지만 쌓인다. 새 유령이 추가되면 가장 오래된
+  // 유령부터 순서대로 제거해, 무한히 화면이 유령으로 뒤덮이지 않게 한다.
+  var GHOST_CAP = 11;
+
+  // 특정 랩부터는 가장 최근에 추가된 유령 3개(state.ghosts[0..2], unshift라
+  // 배열 앞쪽이 최신)가 화면 Y축(수직 중심선, x=W/2) 기준으로 대칭인
+  // "쌍둥이 유령"을 함께 재생한다. 유령 캡(11개)은 그대로 두고, 쌍둥이는
+  // 같은 리플레이 경로를 x축만 반사해 그리는 추가 실체라 실제 위협만 늘어난다.
+  var TWIN_GHOST_MIN_LAP = 20;
+  var TWIN_GHOST_COUNT = 3;
+
+  function ghostPosMirroredAt(gp, elapsed){
+    var pos = ghostPosAt(gp, elapsed);
+    if(!pos) return null;
+    return { x: W - pos.x, y: pos.y };
+  }
 
   function resetRun(){
     state.lap = 1;
@@ -836,7 +1002,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     state.bonusMs = 0;
     state.px = SPAWN_X; state.py = SPAWN_Y; state.vx=0; state.vy=0;
     state.path = [];
-    state.obstacles = randObstacles(obstacleCountForLap(state.lap));
+    state.obstacles = randObstacles(obstacleCountForLap(state.lap), state.lap);
+    state.nextSuddenAt = performance.now() + 1500 + Math.random()*2000;
     state.pendingGoal = randGoal(state.obstacles);
     state.minis = randMinis(state.obstacles, state.pendingGoal);
     state.powerup = randPowerup(state.obstacles, state.pendingGoal);
@@ -896,6 +1063,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(state.streak >= 3) addCoins(state.streak * 50);
     updateCombo();
     state.ghosts.unshift(buildGhostPath(state.path));
+    if(state.ghosts.length > GHOST_CAP) state.ghosts.length = GHOST_CAP;
     nextLap();
   }
 
@@ -968,6 +1136,16 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     var lapLimit = LAP_MS + state.bonusMs;
     var t = Math.min(elapsed, lapLimit);
     document.getElementById('time').textContent = Math.max(0, (lapLimit - t)/1000).toFixed(1);
+
+    if(state.running === true){
+      for(var soi=state.obstacles.length-1; soi>=0; soi--){
+        if(state.obstacles[soi].sudden && now >= state.obstacles[soi].expireAt) state.obstacles.splice(soi,1);
+      }
+      if(state.lap >= SUDDEN_OBSTACLE_MIN_LAP && now >= state.nextSuddenAt){
+        trySpawnSuddenObstacle(now);
+        state.nextSuddenAt = now + SUDDEN_OBSTACLE_MIN_GAP_MS + Math.random()*(SUDDEN_OBSTACLE_MAX_GAP_MS-SUDDEN_OBSTACLE_MIN_GAP_MS);
+      }
+    }
 
     if(state.running === true && state.moveStarted){
       if(ax===0 && ay===0) state.pausedThisLap = true;
@@ -1066,6 +1244,35 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
             gpObj.grazing = false;
           }
         }
+
+        if(state.lap >= TWIN_GHOST_MIN_LAP){
+          var twinN = Math.min(TWIN_GHOST_COUNT, state.ghosts.length);
+          for(var twi=0; twi<twinN; twi++){
+            var gpTwin = state.ghosts[twi];
+            var twinPos = ghostPosMirroredAt(gpTwin, elapsed);
+            if(!twinPos) continue;
+            var gdTwin = dist(state.px,state.py,twinPos.x,twinPos.y);
+            if(gdTwin < PLAYER_R+GHOST_R-5){
+              if(now < state.amuletInvulnUntil){
+                // 방금 부적으로 살아난 직후의 짧은 무적 구간 — 재판정 무시
+              } else if(useAmulet(state.px, state.py)){
+                state.amuletInvulnUntil = now + 1200;
+              } else {
+                fail();
+                break;
+              }
+            } else if(gdTwin < NEAR_MISS_R){
+              if(!gpTwin.twinGrazing){
+                gpTwin.twinGrazing = true;
+                addCoins(50);
+                burst(state.px, state.py, '#e8f7ff', 6);
+                playGraze();
+              }
+            } else {
+              gpTwin.twinGrazing = false;
+            }
+          }
+        }
       }
 
       if(state.goal && dist(state.px,state.py,state.goal.x,state.goal.y) < PLAYER_R+GOAL_R){
@@ -1105,11 +1312,20 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
     for(var oi=0; oi<state.obstacles.length; oi++){
       var ob = state.obstacles[oi];
-      ctx.fillStyle = '#333c4d';
-      ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
-      ctx.strokeStyle = '#4a5468';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(ob.x+0.5, ob.y+0.5, ob.w-1, ob.h-1);
+      if(ob.sudden){
+        var flick = 0.7 + Math.sin(performance.now()/70)*0.25;
+        ctx.fillStyle = '#4a2530';
+        ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+        ctx.strokeStyle = 'rgba(255,92,122,' + flick + ')';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(ob.x+0.5, ob.y+0.5, ob.w-1, ob.h-1);
+      } else {
+        ctx.fillStyle = '#333c4d';
+        ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+        ctx.strokeStyle = '#4a5468';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ob.x+0.5, ob.y+0.5, ob.w-1, ob.h-1);
+      }
     }
 
     for(var gi=state.ghosts.length-1; gi>=0; gi--){
@@ -1134,6 +1350,35 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.globalAlpha = 0.7;
       ctx.fill();
       ctx.globalAlpha = 1;
+    }
+
+    if(state.lap >= TWIN_GHOST_MIN_LAP){
+      var twinDrawN = Math.min(TWIN_GHOST_COUNT, state.ghosts.length);
+      for(var twdi=twinDrawN-1; twdi>=0; twdi--){
+        var gpTw = state.ghosts[twdi];
+        var twColor = ghostPalette[Math.min(twdi, ghostPalette.length-1)];
+        var twPos = ghostPosMirroredAt(gpTw, elapsed);
+        if(!twPos) continue;
+        var twUpTo = ghostTraveledIndex(gpTw, elapsed);
+        ctx.beginPath();
+        ctx.moveTo(W-gpTw.pts[0].x, gpTw.pts[0].y);
+        for(var twj=1; twj<=twUpTo; twj++){ ctx.lineTo(W-gpTw.pts[twj].x, gpTw.pts[twj].y); }
+        ctx.lineTo(twPos.x, twPos.y);
+        ctx.strokeStyle = twColor;
+        ctx.globalAlpha = 0.22;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4,3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+
+        ctx.beginPath();
+        ctx.arc(twPos.x, twPos.y, GHOST_R, 0, Math.PI*2);
+        ctx.fillStyle = twColor;
+        ctx.globalAlpha = 0.55;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
 
     for(var mi=0; mi<state.minis.length; mi++){
@@ -1187,6 +1432,23 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       ctx.strokeStyle = '#fff6df';
       ctx.lineWidth = 1.5;
       ctx.stroke();
+    }
+
+    var trailFx = currentTrail();
+    if(trailFx && trailFx.color && state.path.length > 1){
+      var tp = state.path;
+      var tStart = Math.max(0, tp.length-40);
+      ctx.beginPath();
+      ctx.moveTo(tp[tStart].x, tp[tStart].y);
+      for(var ti=tStart+1; ti<tp.length; ti++){ ctx.lineTo(tp[ti].x, tp[ti].y); }
+      ctx.strokeStyle = trailFx.color;
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.35;
+      ctx.shadowColor = trailFx.color;
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     }
 
     var skin = currentSkin();
@@ -1342,6 +1604,16 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     document.getElementById('shopSkin').classList.add('hidden');
     document.getElementById('shop').classList.remove('hidden');
   });
+  document.getElementById('tileEffect').addEventListener('click', function(){
+    renderEffectShop();
+    document.getElementById('shop').classList.add('hidden');
+    document.getElementById('shopEffect').classList.remove('hidden');
+  });
+  document.getElementById('effectBack').addEventListener('click', function(){
+    document.getElementById('shopMainCoins').textContent = totalCoins;
+    document.getElementById('shopEffect').classList.add('hidden');
+    document.getElementById('shop').classList.remove('hidden');
+  });
 
   // 개발용 버튼 — 출시 전 제거. 코인·스피드 레벨·부적·자석·스킨 저장값을 전부 지우고 새로고침한다.
   document.getElementById('resetAll').addEventListener('click', function(){
@@ -1351,6 +1623,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     localStorage.removeItem(MAGNET_KEY);
     localStorage.removeItem(SKIN_OWNED_KEY);
     localStorage.removeItem(SKIN_EQUIPPED_KEY);
+    localStorage.removeItem(TRAIL_OWNED_KEY);
+    localStorage.removeItem(TRAIL_EQUIPPED_KEY);
     location.reload();
   });
 
