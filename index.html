@@ -942,9 +942,17 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     return true;
   }
 
-  function randMinis(obstacles, goal){
+  function randMinis(obstacles, goal, lap){
     var minis = [];
-    var count = 2 + Math.floor(Math.random()*2);
+    var count;
+    if(!lap || lap < 15){
+      count = 2 + Math.floor(Math.random()*2); // 2~3개
+    } else {
+      var past = lap - 15;
+      var maxCount = Math.min(6, 3 + Math.floor(past/5)); // 15랩:3 → 5랩마다 +1, 30랩부터 최대 6
+      var minCount = Math.min(maxCount, 2 + Math.floor(past/8)); // 미니멈도 서서히 상승, 많이 나오는 빈도 증가
+      count = minCount + Math.floor(Math.random()*(maxCount-minCount+1));
+    }
     var tries = 0;
     while(minis.length < count && tries < 200){
       tries++;
@@ -1008,7 +1016,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     state.obstacles = randObstacles(obstacleCountForLap(state.lap), state.lap);
     state.nextSuddenAt = performance.now() + 1500 + Math.random()*2000;
     state.pendingGoal = randGoal(state.obstacles);
-    state.minis = randMinis(state.obstacles, state.pendingGoal);
+    state.minis = randMinis(state.obstacles, state.pendingGoal, state.lap);
     state.powerup = randPowerup(state.obstacles, state.pendingGoal);
     // 미니 픽업이 있으면 전부 먹기 전까지 코어가 등장하지 않는다.
     state.goal = state.minis.length === 0 ? state.pendingGoal : null;
