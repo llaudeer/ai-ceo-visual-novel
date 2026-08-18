@@ -628,6 +628,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var MAGNET_RADIUS = [0, 40, 70, 100];
   var MAGNET_COST = [0, 300000, 300000, 300000];
   var MAGNET_PULL_BASE = 0.15;
+  var MAGNET_ACCEL_DELAY_MS = 1500;
   var MAGNET_PULL_ACCEL = 0.003;
   var magnetLevel = parseInt(localStorage.getItem(MAGNET_KEY) || '0', 10) || 0;
   if(magnetLevel < 0 || magnetLevel > MAGNET_MAX_LEVEL) magnetLevel = Math.min(Math.max(magnetLevel,0), MAGNET_MAX_LEVEL);
@@ -1216,7 +1217,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
           if(!mnMag.magnetized && md < magnetR){ mnMag.magnetized = true; mnMag.chaseMs = 0; }
           if(mnMag.magnetized && md > 0.01){
             mnMag.chaseMs = (mnMag.chaseMs||0) + dt;
-            var pullSpeed = MAGNET_PULL_BASE + MAGNET_PULL_ACCEL * mnMag.chaseMs;
+            var overtime = Math.max(0, mnMag.chaseMs - MAGNET_ACCEL_DELAY_MS);
+            var pullSpeed = MAGNET_PULL_BASE + MAGNET_PULL_ACCEL * overtime;
             var pull = Math.min(pullSpeed*dt, md);
             mnMag.x += (state.px-mnMag.x)/md*pull;
             mnMag.y += (state.py-mnMag.y)/md*pull;
