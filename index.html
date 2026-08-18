@@ -617,9 +617,9 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   // 영구 자석 업그레이드. 반경 안의 미니 픽업을 매 프레임 끌어당긴다.
   var MAGNET_KEY = 'zansang_magnetLevel';
   var MAGNET_MAX_LEVEL = 3;
-  var MAGNET_RADIUS = [0, 40, 70, 100];
+  var MAGNET_RADIUS = [0, 22, 34, 46];
   var MAGNET_COST = [0, 300000, 300000, 300000];
-  var MAGNET_PULL_PER_MS = 0.15;
+  var MAGNET_PULL_PER_MS = 1.2;
   var magnetLevel = parseInt(localStorage.getItem(MAGNET_KEY) || '0', 10) || 0;
   if(magnetLevel < 0 || magnetLevel > MAGNET_MAX_LEVEL) magnetLevel = Math.min(Math.max(magnetLevel,0), MAGNET_MAX_LEVEL);
 
@@ -1200,7 +1200,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
           var mnMag = state.minis[mgi];
           if(mnMag.taken) continue;
           var md = dist(state.px,state.py,mnMag.x,mnMag.y);
-          if(md < magnetR && md > 0.01){
+          if(!mnMag.magnetized && md < magnetR) mnMag.magnetized = true;
+          if(mnMag.magnetized && md > 0.01){
             var pull = Math.min(MAGNET_PULL_PER_MS*dt, md);
             mnMag.x += (state.px-mnMag.x)/md*pull;
             mnMag.y += (state.py-mnMag.y)/md*pull;
