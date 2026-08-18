@@ -78,13 +78,14 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 .sideBox .cv{font-size:20px;font-weight:500;color:#ffe6a8;font-variant-numeric:tabular-nums}
 .sideBox.amuletBox .cv{color:#bffbe0}
 .hud{
-  display:flex;justify-content:space-between;align-items:center;
+  display:flex;justify-content:flex-start;align-items:center;gap:22px;
   width:100%;
   padding:0 4px 10px;
   font-size:12px;
   letter-spacing:0.05em;
   text-transform:uppercase;
 }
+.hud .muteBtn{margin-left:auto}
 .hud .label{color:var(--text-dim);margin-right:6px}
 .hud .val{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
 .muteBtn{
@@ -544,6 +545,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   // 논스톱 콤보(3 이상부터 콤보당 50)로 쌓이고 새로고침해도 유지된다.
   var COIN_KEY = 'zansang_coins';
   var totalCoins = parseInt(localStorage.getItem(COIN_KEY) || '0', 10) || 0;
+  totalCoins = 1000000; // TEMP 테스트용 — 출시 전 이 줄 삭제
   function addCoins(n){
     totalCoins += n;
     localStorage.setItem(COIN_KEY, String(totalCoins));
