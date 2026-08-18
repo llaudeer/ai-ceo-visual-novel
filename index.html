@@ -782,7 +782,8 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     amuletInvulnUntil: 0,
     nextSuddenAt: 0,
     shake:0,
-    particles: []
+    particles: [],
+    rings: []
   };
 
   function updateCombo(){
@@ -1017,14 +1018,20 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
 
   function burst(x,y,color,n){
     for(var i=0;i<n;i++){
-      var a = Math.random()*Math.PI*2, sp = 0.6+Math.random()*3.2;
+      var a = Math.random()*Math.PI*2, sp = 0.6+Math.random()*3.6;
+      var isSpark = Math.random() < 0.4;
       state.particles.push({
         x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
-        life:1, decay:0.022+Math.random()*0.03,
-        size:1.6+Math.random()*3.2,
-        color:color, spin:(Math.random()-0.5)*0.3
+        life:1, decay:0.018+Math.random()*0.03,
+        size: isSpark ? 5+Math.random()*7 : 1.6+Math.random()*3.4,
+        color:color, spark:isSpark
       });
     }
+    ring(x,y,color);
+  }
+
+  function ring(x,y,color){
+    state.rings.push({x:x,y:y,color:color,life:1,r:4});
   }
 
   function fail(reason){
@@ -1298,6 +1305,11 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
       p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94; p.life-=(p.decay||0.035);
       if(p.life<=0) state.particles.splice(i,1);
     }
+    for(var ri=state.rings.length-1;ri>=0;ri--){
+      var rg = state.rings[ri];
+      rg.r += 2.6; rg.life -= 0.05;
+      if(rg.life<=0) state.rings.splice(ri,1);
+    }
     if(state.shake>0) state.shake *= 0.85;
 
     draw(elapsed);
@@ -1497,19 +1509,43 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     ctx.fill();
     ctx.shadowBlur = 0;
 
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for(var ri2=0;ri2<state.rings.length;ri2++){
+      var rg = state.rings[ri2];
+      ctx.globalAlpha = Math.max(rg.life,0) * 0.6;
+      ctx.strokeStyle = rg.color;
+      ctx.lineWidth = 2.5 * Math.max(rg.life,0);
+      ctx.beginPath();
+      ctx.arc(rg.x, rg.y, rg.r, 0, Math.PI*2);
+      ctx.stroke();
+    }
     for(var pi=0;pi<state.particles.length;pi++){
       var pt = state.particles[pi];
       var pr = (pt.size||2.4) * Math.max(pt.life,0.05);
       ctx.globalAlpha = Math.max(pt.life,0);
       ctx.shadowColor = pt.color;
-      ctx.shadowBlur = 10 * Math.max(pt.life,0);
-      ctx.beginPath();
-      ctx.arc(pt.x,pt.y,pr,0,Math.PI*2);
+      ctx.shadowBlur = 14 * Math.max(pt.life,0);
       ctx.fillStyle = pt.color;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
+      if(pt.spark){
+        var speed = Math.hypot(pt.vx,pt.vy) || 0.001;
+        var ux = pt.vx/speed, uy = pt.vy/speed;
+        var len = pr;
+        ctx.beginPath();
+        ctx.moveTo(pt.x - ux*len, pt.y - uy*len);
+        ctx.lineTo(pt.x + ux*len, pt.y + uy*len);
+        ctx.strokeStyle = pt.color;
+        ctx.lineWidth = 1.6 * Math.max(pt.life,0.05);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(pt.x,pt.y,pr,0,Math.PI*2);
+        ctx.fill();
+      }
     }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    ctx.restore();
 
     ctx.restore();
   }
