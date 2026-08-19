@@ -348,6 +348,7 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
   var PLAYER_R = 7;
   var GOAL_R = 11;
   var GHOST_R = 7;
+  var R_HOLD_RESTART_MS = 2000;
   var PLAYER_SPEED = 3.1;
   // 3.1은 "60fps에서 프레임당 픽셀" 기준 값이라, ms당 속도로 환산해 쓴다.
   // 유령처럼 실제 경과 시간 기준으로 움직여야 화면 주사율(60Hz/120Hz 등)과
@@ -825,15 +826,22 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(e.key.toLowerCase() === 'r' && !document.getElementById('gameover').classList.contains('hidden')){
       document.getElementById('restart').click();
     }
+    if(e.key.toLowerCase() === 'r' && state.running === true && !state.rHoldStart){
+      state.rHoldStart = performance.now();
+    }
     if(e.key === 'Escape'){
       if(state.running === true) pauseGame();
       else if(state.running === 'paused') resumeGame();
     }
   });
-  window.addEventListener('keyup', function(e){ keys[e.key.toLowerCase()] = false; });
+  window.addEventListener('keyup', function(e){
+    keys[e.key.toLowerCase()] = false;
+    if(e.key.toLowerCase() === 'r') state.rHoldStart = null;
+  });
 
   var state = {
     running:false,
+    rHoldStart:null,
     lap:1,
     best:0,
     lapStart:0,
@@ -1223,6 +1231,17 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     if(!state.running || state.running === 'paused') return;
 
     var now = performance.now();
+
+    if(state.rHoldStart){
+      if(state.running !== true){
+        state.rHoldStart = null;
+      } else if(now - state.rHoldStart >= R_HOLD_RESTART_MS){
+        state.rHoldStart = null;
+        state.running = true;
+        resetRun();
+        return;
+      }
+    }
 
     if(state.running === true){
       var ax=0, ay=0;
@@ -1671,6 +1690,30 @@ canvas{display:block;background:var(--bg-2);max-width:100%;height:auto}
     ctx.restore();
 
     drawComboCornerPulse();
+    drawRHoldCorners();
+  }
+
+  // R을 누르고 있는 동안 네 모서리가 점점 빨갛게 물들고, 2초를 채우면
+  // 게임이 처음부터 다시 시작된다.
+  function drawRHoldCorners(){
+    if(!state.rHoldStart) return;
+    var progress = Math.min(1, (performance.now() - state.rHoldStart) / R_HOLD_RESTART_MS);
+    if(progress <= 0) return;
+    var corners = [[0,0],[W,0],[0,H],[W,H]];
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for(var ci=0; ci<corners.length; ci++){
+      var cx = corners[ci][0], cy = corners[ci][1];
+      var r = 40 + progress*220;
+      var grad = ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+      grad.addColorStop(0, 'rgba(255,40,60,' + (0.15+progress*0.55) + ')');
+      grad.addColorStop(1, 'rgba(255,40,60,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx,cy,r,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   // 콤보가 유지될수록 화면 네 모서리에 배경음에 반응하는 파동을 그린다.
